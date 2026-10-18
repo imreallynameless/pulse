@@ -1,6 +1,6 @@
 # Contributing
 
-Fork this repository, create a branch, run `npm test`, and open a pull request describing the behavior changed and how you checked it. Use Node 22 or later. The local tester has no runtime dependencies and no build step.
+Fork this repository, create a branch, run `npm test`, and open a pull request describing the behavior changed and how you checked it. Use Node 22 or later. Run npm ci first. The WebSocket relay uses ws; there is no build step.
 
 ## Hardware reports
 

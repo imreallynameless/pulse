@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Pulse — connection test</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.mjs"></script></head>
 <body><main>
-<header><a class="brand" href="/">♥ Pulse</a><span>Local connection test</span></header>
-<section class="intro"><h1>A direct line to your Fitbit.</h1><p>Check your live heart rate and how often your Air sends a reading. Everything stays in this browser.</p></section>
+<header><a class="brand" href="/">♥ Pulse</a><span>Bluetooth broadcaster</span></header>
+<section class="intro"><h1>A direct line to your Fitbit.</h1><p>Check your live heart rate and how often your Air sends a reading. Readings stay in this browser until you start sharing.</p></section>
 <div class="layout"><section class="monitor" aria-label="Heart rate monitor">
 <div class="statusline"><span id="status" role="status">Offline</span><span id="device">No device connected</span></div>
 <div class="reading"><span id="bpm">—</span><span class="unit">bpm</span></div>
@@ -11,7 +11,12 @@
 <p id="message" role="status">No readings are sent to a server.</p>
 </section>
 <aside><h2>Before you connect</h2><ol><li>Wear your Air and keep it near your Mac.</li><li>In Google Health, open <strong>Connections → Fitbit Air → Share heart rate → Get started</strong>.</li><li>Use Chrome, then select your tracker in the Bluetooth picker. Allow Chrome Bluetooth access if macOS asks.</li></ol><p>If your tracker is missing, enable sharing again and disconnect other apps using its heart-rate feed.</p><label><input id="all-devices" type="checkbox"> Show all nearby devices in the picker</label><p class="small">Use this only if the normal heart-rate filter cannot find your Air.</p></aside></div>
-<section class="diagnostics"><h2>Connection measurements</h2><p>Time between received notifications, not the delay from your actual heartbeat. Repeated BPM values count as new readings.</p><dl><div><dt>Readings</dt><dd id="count">0</dd></div><div><dt>Typical interval</dt><dd id="median">—</dd></div><div><dt>95th percentile</dt><dd id="p95">—</dd></div><div><dt>Longest interval</dt><dd id="max">—</dd></div></dl><p id="optional">Beat intervals and sensor contact: not yet observed.</p><button id="export" class="secondary" disabled>Download test data</button><p class="small">The download contains heart-rate readings and timestamps. Keep it private. A new connection starts a fresh session; export first to keep this one.</p></section>
+<section class="sharing"><div><h2>Put your pulse on a website.</h2><p>Start sharing to this server, then embed the read-only widget. Keep this tab open and your Mac awake.</p></div>
+<div class="fields"><label>Public feed name<input id="feed" value="my-pulse" autocomplete="off" pattern="[a-z0-9-]+"></label><label>Private publishing token<input id="token" type="password" autocomplete="off" placeholder="From your server setup"></label></div>
+<div class="controls"><button id="start-share">Start sharing</button><button id="stop-share" class="secondary" disabled>Stop sharing</button><a id="preview" target="_blank" rel="noopener" href="/embed.html?feed=my-pulse">Open widget preview</a></div>
+<p id="share-status" role="status">Sharing is off. Run npm run setup on your server to create a feed.</p>
+<label>Embed code<textarea id="embed-code" readonly rows="3" spellcheck="false"></textarea></label><button id="copy-embed" class="secondary">Copy embed code</button><p id="hosting-note" class="small"></p>
+</section><section class="diagnostics"><h2>Connection measurements</h2><p>Time between received notifications, not the delay from your actual heartbeat. Repeated BPM values count as new readings.</p><dl><div><dt>Readings</dt><dd id="count">0</dd></div><div><dt>Typical interval</dt><dd id="median">—</dd></div><div><dt>95th percentile</dt><dd id="p95">—</dd></div><div><dt>Longest interval</dt><dd id="max">—</dd></div></dl><p id="optional">Beat intervals and sensor contact: not yet observed.</p><button id="export" class="secondary" disabled>Download test data</button><p class="small">The download contains heart-rate readings and timestamps. Keep it private. A new connection starts a fresh session; export first to keep this one.</p></section>
 <details><summary>Connection log</summary><pre id="log">Ready.</pre></details>
-<footer>First, prove the connection. Next, a widget for any website.<br>Open source under the MIT license. This test does not broadcast publicly.</footer>
+<footer>Open source under the MIT license. Fork it, self-host it, make it yours.<br>Sharing is always off until you start it. The widget is public to anyone with its address.</footer>
 </main></body></html>

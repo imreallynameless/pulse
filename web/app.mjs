@@ -1,4 +1,6 @@
 import { decodeHeartRate, summarizeIntervals, readingState } from './heart-rate.mjs';
+import { setupBroadcast } from './broadcast.mjs';
+const broadcast = setupBroadcast();
 const el = (id) => document.getElementById(id);
 let device = null, characteristic = null, connected = false, busy = false, generation = 0;
 let readings = [], intervals = [], lastReceived = null, startedAt = null, rrObserved = false;
@@ -23,6 +25,7 @@ function refresh() {
 }
 function release() {
   generation += 1;
+  broadcast.stop();
   if (characteristic) characteristic.removeEventListener('characteristicvaluechanged', receive);
   characteristic = null;
   if (device) {
@@ -41,6 +44,7 @@ function receive(event) {
   const now = performance.now();
   try {
     const measurement = decodeHeartRate(event.target.value);
+    broadcast.send(measurement);
     if (lastReceived !== null) intervals.push(now - lastReceived);
     lastReceived = now;
     rrObserved ||= measurement.rrMs.length > 0;
@@ -53,7 +57,7 @@ function receive(event) {
     for (const key of ['median', 'p95', 'max']) el(key).textContent = stats[key] === null ? '—' : `${Math.round(stats[key])} ms`;
     const contact = measurement.contact === null ? 'not supplied' : measurement.contact ? 'detected' : 'not detected';
     el('optional').textContent = `Sensor contact: ${contact}. Beat intervals: ${measurement.rrMs.length ? measurement.rrMs.map((v) => Math.round(v) + ' ms').join(', ') : rrObserved ? 'previously observed; absent in this packet' : 'not observed'}.`;
-    el('message').textContent = 'Receiving directly over Bluetooth. Nothing is uploaded.';
+    el('message').textContent = 'Receiving directly over Bluetooth. Sharing controls are below.';
     refresh();
   } catch (error) { log(error.message); }
 }

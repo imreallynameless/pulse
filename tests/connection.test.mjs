@@ -32,9 +32,10 @@ test('disconnect during notification setup cannot revive the session', async () 
     }
   };
   const source = (await readFile(new URL('../web/app.mjs', import.meta.url), 'utf8'))
-    .replace(/^import .*;\n/, '');
+    .replace(/^import .*;\n/gm, '');
   vm.runInNewContext(source, {
     decodeHeartRate, summarizeIntervals, readingState, performance,
+    setupBroadcast: () => ({stop() {}, send() {}}),
     navigator: { bluetooth: { async requestDevice() { return device; } } },
     document: { getElementById: element, addEventListener() {} },
     window: { isSecureContext: true, addEventListener() {} },
