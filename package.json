@@ -1,0 +1,10 @@
+{
+  "name": "pulse-fitbit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Direct Bluetooth heart-rate connection tester; an embeddable live widget is planned after hardware validation.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node server.mjs", "test": "node --test" }
+}

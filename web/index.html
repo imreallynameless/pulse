@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Pulse — connection test</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.mjs"></script></head>
+<body><main>
+<header><a class="brand" href="/">♥ Pulse</a><span>Local connection test</span></header>
+<section class="intro"><h1>A direct line to your Fitbit.</h1><p>Check your live heart rate and how often your Air sends a reading. Everything stays in this browser.</p></section>
+<div class="layout"><section class="monitor" aria-label="Heart rate monitor">
+<div class="statusline"><span id="status" role="status">Offline</span><span id="device">No device connected</span></div>
+<div class="reading"><span id="bpm">—</span><span class="unit">bpm</span></div>
+<p id="freshness">Connect your Fitbit to see the first reading.</p>
+<div class="controls"><button id="connect">Connect Fitbit</button><button id="disconnect" class="secondary" disabled>Disconnect</button></div>
+<p id="message" role="status">No readings are sent to a server.</p>
+</section>
+<aside><h2>Before you connect</h2><ol><li>Wear your Air and keep it near your Mac.</li><li>In Google Health, open <strong>Connections → Fitbit Air → Share heart rate → Get started</strong>.</li><li>Use Chrome, then select your tracker in the Bluetooth picker. Allow Chrome Bluetooth access if macOS asks.</li></ol><p>If your tracker is missing, enable sharing again and disconnect other apps using its heart-rate feed.</p><label><input id="all-devices" type="checkbox"> Show all nearby devices in the picker</label><p class="small">Use this only if the normal heart-rate filter cannot find your Air.</p></aside></div>
+<section class="diagnostics"><h2>Connection measurements</h2><p>Time between received notifications, not the delay from your actual heartbeat. Repeated BPM values count as new readings.</p><dl><div><dt>Readings</dt><dd id="count">0</dd></div><div><dt>Typical interval</dt><dd id="median">—</dd></div><div><dt>95th percentile</dt><dd id="p95">—</dd></div><div><dt>Longest interval</dt><dd id="max">—</dd></div></dl><p id="optional">Beat intervals and sensor contact: not yet observed.</p><button id="export" class="secondary" disabled>Download test data</button><p class="small">The download contains heart-rate readings and timestamps. Keep it private. A new connection starts a fresh session; export first to keep this one.</p></section>
+<details><summary>Connection log</summary><pre id="log">Ready.</pre></details>
+<footer>First, prove the connection. Next, a widget for any website.<br>Open source under the MIT license. This test does not broadcast publicly.</footer>
+</main></body></html>
