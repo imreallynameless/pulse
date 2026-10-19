@@ -17,3 +17,18 @@ test('cloud outages keep historical BPM with paused status; invalid timestamps a
   assert.equal(publicSnapshot({...data,error:true}, 'alice', now).status, 'paused');
   assert.equal(publicSnapshot({...data,latest:{bpm:72,measuredAt:now+1}}, 'alice', now).reading, null);
 });
+
+test('snapshot writer works in a fresh checkout path containing spaces', async () => {
+  const {mkdtemp,copyFile,readFile,rm}=await import('node:fs/promises');
+  const {tmpdir}=await import('node:os');
+  const {join}=await import('node:path');
+  const {pathToFileURL}=await import('node:url');
+  const dir=await mkdtemp(join(tmpdir(),'pulse checkout '));
+  try {
+    const modulePath=join(dir,'cloud-snapshot.mjs');
+    await copyFile(new URL('../cloud-snapshot.mjs',import.meta.url),modulePath);
+    const {writeCloudSnapshot}=await import(pathToFileURL(modulePath));
+    await writeCloudSnapshot(data);
+    assert.deepEqual(JSON.parse(await readFile(join(dir,'recordings/cloud-latest.json'),'utf8')),data);
+  } finally {await rm(dir,{recursive:true,force:true});}
+});

@@ -103,3 +103,22 @@ test('static files use the built asset store; private routes never fall through'
   assert.equal((await worker.fetch(request('/_poll'),bindings)).status,404);
   assert.equal((await worker.fetch(request('/connect',{method:'POST'}),bindings)).status,503);
 });
+
+test('unfinished login bodies do not block polling and time out', async () => {
+  const {account}=fixture();
+  let cancelled=false;
+  const body=new ReadableStream({cancel(){cancelled=true;}});
+  const login=account.fetch(request('/login',{method:'POST',headers:{Origin:'https://pulse.example','Content-Type':'application/x-www-form-urlencoded'},body,duplex:'half'}));
+  assert.equal(await Promise.race([account.fetch(request('/_poll')).then(r=>r.status),new Promise(r=>setTimeout(()=>r('blocked'),100))]),204);
+  assert.equal((await login).status,408);
+  assert.equal(cancelled,true);
+});
+test('login enforces actual body size without Content-Length and accepts valid forms', async () => {
+  const {account}=fixture();
+  const headers={Origin:'https://pulse.example','Content-Type':'application/x-www-form-urlencoded'};
+  const body=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('key='+ 'x'.repeat(4096)));c.close();}});
+  assert.equal((await account.fetch(request('/login',{method:'POST',headers,body,duplex:'half'}))).status,413);
+  const result=await account.fetch(request('/login',{method:'POST',headers,body:new URLSearchParams({key:env.ADMIN_KEY})}));
+  assert.equal(result.status,303);
+  assert.match(result.headers.get('Set-Cookie'),/pulse_session=/);
+});

@@ -32,7 +32,25 @@ export default {
 };
 export class PulseAccount {
   constructor(ctx, env) { this.storage=ctx.storage; this.env=env; this.queue=Promise.resolve(); }
-  fetch(request) {
+  async fetch(request) {
+    if(request.method==='POST' && new URL(request.url).pathname==='/login') {
+      if(request.headers.get('Origin')!==new URL(request.url).origin) return response('Invalid origin',403);
+      if(Number(request.headers.get('Content-Length'))>4096) return response('Request too large',413);
+      const reader=request.body?.getReader();
+      const chunks=[]; let size=0, timeout;
+      try {
+        const expired=new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('timeout')),5000);});
+        while(reader) {
+          const {done,value}=await Promise.race([reader.read(),expired]);
+          if(done) break;
+          size+=value.byteLength;
+          if(size>4096) return response('Request too large',413);
+          chunks.push(value);
+        }
+        request=new Request(request.url,{method:request.method,headers:request.headers,body:new Blob(chunks)});
+      } catch { return response('Unable to read login request',408); }
+      finally { clearTimeout(timeout); if(reader) void reader.cancel().catch(()=>{}); }
+    }
     if(request.method==='GET' && new URL(request.url).pathname==='/cloud-reading') return this.handle(request);
     // ponytail: one owner, one mutation queue; shard by owner only for a multi-account service.
     const result=this.queue.then(()=>this.handle(request));

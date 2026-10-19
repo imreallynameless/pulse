@@ -1,9 +1,8 @@
 import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
-import { dirname } from 'node:path';
 
 export const snapshotPath = new URL('./recordings/cloud-latest.json', import.meta.url);
 export async function writeCloudSnapshot(value) {
-  await mkdir(dirname(snapshotPath.pathname), { recursive: true, mode: 0o700 });
+  await mkdir(new URL('./recordings/', import.meta.url), { recursive: true, mode: 0o700 });
   const temporary = new URL('./recordings/cloud-latest.tmp', import.meta.url);
   await writeFile(temporary, JSON.stringify(value), { mode: 0o600 });
   await rename(temporary, snapshotPath);
