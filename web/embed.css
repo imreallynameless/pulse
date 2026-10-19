@@ -1,1 +1,35 @@
-:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172b45;background:transparent;color-scheme:light}*{box-sizing:border-box}body{margin:0}main{background:#fff;border:1px solid #d7e0ec;border-radius:16px;padding:15px 20px;min-height:148px;max-width:480px}.top,.bottom{display:flex;justify-content:space-between;gap:12px;font-size:12px}.top>span:first-child{color:#b52650;font-weight:700}.bottom{color:#52647b;font-size:11px;overflow-wrap:anywhere}.reading{display:flex;gap:10px;align-items:baseline;padding:3px 0 8px}#bpm{font-size:53px;line-height:1.2;font-weight:650;letter-spacing:-2px;font-variant-numeric:tabular-nums}.reading>span:last-child{color:#52647b}#status{color:#52647b}#status[data-live=true]{color:#16704b}#feed{max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@font-face{font-family:Figtree;src:url('/fonts/Figtree-Variable.woff2') format('woff2');font-weight:300 900;font-display:swap}
+@font-face{font-family:Cabin;src:url('/fonts/Cabin-Variable.woff2') format('woff2');font-weight:400 700;font-display:swap}
+:root{font-family:Figtree,ui-sans-serif,system-ui,sans-serif;color-scheme:light;--text:#1d1830;--muted:#655d78;--accent:#d71920;--line:rgba(29,24,48,.15);background:transparent;color:var(--text);-webkit-font-smoothing:antialiased}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--text:#f1edf6;--muted:#b3aaba;--accent:#ffd33d;--line:rgba(241,237,246,.16)}}
+:root[data-theme=dark]{color-scheme:dark;--text:#f1edf6;--muted:#b3aaba;--accent:#ffd33d;--line:rgba(241,237,246,.16)}
+*{box-sizing:border-box}body{margin:0}main{display:flex;align-items:center;gap:16px;padding:16px 0;max-width:480px;min-height:96px;text-transform:lowercase;line-height:1.5}
+.heart{width:40px;height:48px;flex:none;display:grid;place-items:center;color:var(--accent)}
+.heart svg{width:32px;height:32px;overflow:visible}
+.copy{min-width:0;flex:1;display:grid;gap:4px;border-left:1px solid var(--line);padding-left:16px}
+.label{font-family:Cabin,Figtree,sans-serif;font-size:11px;letter-spacing:.05em;color:var(--muted)}
+.reading{display:flex;align-items:baseline;flex-wrap:wrap;column-gap:16px;row-gap:4px}
+.value{font-size:28px;line-height:1.1;letter-spacing:-.045em;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.unit{font-size:12px;letter-spacing:0;font-weight:400;color:var(--muted);margin-left:4px}
+#age{font-size:12px;line-height:1.5;color:var(--muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#status{font-family:Cabin,Figtree,sans-serif;font-size:11px;color:var(--muted)}
+#status[data-live=true]{color:var(--accent)}
+#status[data-state=latest]{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#feed{display:none}
+@media(max-width:280px){main{gap:8px}.heart{width:32px}.copy{padding-left:12px}.reading{column-gap:8px}.value{font-size:24px}}
+
+/* A quiet header-sized variant; the original embed remains available. */
+[data-layout=compact] main{min-height:0;padding:4px 0;gap:6px;justify-content:flex-end;align-items:flex-start;line-height:18px}
+[data-layout=compact] .heart{width:18px;height:18px}
+[data-layout=compact] .heart svg{width:18px;height:18px}
+[data-layout=compact] .copy{flex:0 1 auto;border:0;padding:0;gap:0}
+[data-layout=compact] .label{display:none}
+[data-layout=compact] .reading{flex-wrap:nowrap;gap:8px;justify-content:flex-end;align-items:center;min-height:18px}
+[data-layout=compact] .value{font-size:11px;font-weight:400;line-height:18px;letter-spacing:0;color:var(--muted)}
+[data-layout=compact] .unit,[data-layout=compact] #age,[data-layout=compact] #status{font-size:11px;font-weight:400;line-height:18px}
+[data-layout=compact] #age{white-space:nowrap}
+
+/* Decorative cadence only; measurement age remains the source of freshness. */
+.heart svg{transform-origin:center;animation:heart-pulse 2.4s ease-in-out infinite}
+@keyframes heart-pulse{0%,18%,38%,100%{transform:scale(1)}10%{transform:scale(1.12)}28%{transform:scale(1.07)}}
+@media(prefers-reduced-motion:reduce){.heart svg{animation:none}}
