@@ -122,7 +122,7 @@ export class PulseAccount {
   }
   async poll() {
     const account=await this.storage.get('account');
-    if(!account?.tokens || account.nextCheck>Date.now()) return;
+    if(!account?.tokens || (account.nextCheck>Date.now() && account.nextCheck<=Date.now()+300000)) return;
     try {
       let tokens=await unseal(account.tokens,this.env.TOKEN_KEY);
       if(tokens.expiresAt<Date.now()+60000) {
@@ -130,10 +130,12 @@ export class PulseAccount {
         account.tokens=await seal(tokens,this.env.TOKEN_KEY);
       }
       const now=Date.now();
+      const scan=account.scan && now-account.scan.until<86400000 ? account.scan : {since:Math.max(now-86400000,(account.latest?.measuredAt||0)-300000),until:now,pageToken:''};
       const url=new URL('https://health.googleapis.com/v4/users/me/dataTypes/heart-rate/dataPoints');
       url.searchParams.set('dataSourceFamily','users/me/dataSourceFamilies/all-sources');
       url.searchParams.set('pageSize','10000');
-      url.searchParams.set('filter',`heart_rate.sample_time.physical_time >= "${new Date(now-86400000).toISOString()}" AND heart_rate.sample_time.physical_time < "${new Date(now).toISOString()}"`);
+      url.searchParams.set('filter',`heart_rate.sample_time.physical_time >= "${new Date(scan.since).toISOString()}" AND heart_rate.sample_time.physical_time < "${new Date(scan.until).toISOString()}"`);
+      url.searchParams.set('pageToken',scan.pageToken);
       let newest=account.latest, pages=0;
       do {
         const data=await this.google(url,{headers:{Authorization:`Bearer ${tokens.access_token}`}});
@@ -142,12 +144,14 @@ export class PulseAccount {
           if(Number.isInteger(bpm)&&bpm>=1&&bpm<=300&&Number.isFinite(measuredAt)&&measuredAt>0&&measuredAt<=now&&(!newest||measuredAt>newest.measuredAt)) newest={bpm,measuredAt};
         }
         url.searchParams.set('pageToken',data.nextPageToken||'');
-        if(++pages>=6 && data.nextPageToken) throw new Error('Incomplete response');
+        account.latest=newest||null;
+        account.scan=data.nextPageToken?{...scan,pageToken:data.nextPageToken}:null;
+        if(++pages>=6) break;
       } while(url.searchParams.get('pageToken'));
       Object.assign(account,{latest:newest||null,checkedAt:Date.now(),error:false,failures:0,nextCheck:0});
     } catch {
       const failures=Math.min((account.failures||0)+1,8);
-      Object.assign(account,{error:true,failures,nextCheck:Date.now()+Math.min(3600000,60000*2**(failures-1))});
+      Object.assign(account,{error:true,failures,nextCheck:Date.now()+Math.min(300000,60000*2**(failures-1))});
     }
     await this.storage.put('account',account);
   }
