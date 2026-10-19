@@ -20,8 +20,8 @@
 
 /* A quiet header-sized variant; the original embed remains available. */
 [data-layout=compact] main{min-height:0;padding:4px 0;gap:6px;justify-content:flex-end;line-height:1.4}
-[data-layout=compact] .heart{width:14px;height:16px}
-[data-layout=compact] .heart svg{width:14px;height:14px}
+[data-layout=compact] .heart{width:18px;height:18px}
+[data-layout=compact] .heart svg{width:18px;height:18px}
 [data-layout=compact] .copy{flex:0 1 auto;border:0;padding:0;gap:0}
 [data-layout=compact] .label{display:none}
 [data-layout=compact] .reading{flex-wrap:nowrap;gap:8px;justify-content:flex-end}
