@@ -1,6 +1,6 @@
 import { random, digest, seal, unseal } from './security.mjs';
 const scope = 'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly';
-const assets = new Set(['/embed.html','/embed.css','/embed.mjs','/cloud-embed.mjs','/fonts/Figtree-Variable.woff2','/fonts/Cabin-Variable.woff2']);
+const assets = new Set(['/about.html','/privacy.html','/embed.html','/embed.css','/embed.mjs','/cloud-embed.mjs','/fonts/Figtree-Variable.woff2','/fonts/Cabin-Variable.woff2']);
 const routes = new Set(['/','/login','/connect','/callback','/disconnect','/cloud-reading']);
 const cookie = (name, value, seconds, sameSite='Strict') => `${name}=${value}; HttpOnly; Secure; SameSite=${sameSite}; Path=/; Max-Age=${seconds}`;
 function cookies(request) { return Object.fromEntries((request.headers.get('Cookie')||'').split(';').map(x=>x.trim().split('='))); }
@@ -17,7 +17,7 @@ export default {
     if (assets.has(url.pathname) && ['GET','HEAD'].includes(request.method)) {
       const result = await env.ASSETS.fetch(request);
       const headers = new Headers(result.headers);
-      headers.set('Content-Security-Policy',"default-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors *");
+      headers.set('Content-Security-Policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors *");
       headers.set('Referrer-Policy','no-referrer');
       headers.set('X-Content-Type-Options','nosniff');
       return new Response(result.body,{status:result.status,headers});

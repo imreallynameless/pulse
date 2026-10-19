@@ -14,7 +14,7 @@ Fitbit access was verified locally. Apple Watch data depends on Apple Health imp
 
 1. Fork and clone this repository. Install Node.js 22+ and run `npm ci`.
 2. Run `npx wrangler login`. Check `npx wrangler whoami` and select the intended account by exporting `CLOUDFLARE_ACCOUNT_ID` when you have several accounts.
-3. Change `name` in `wrangler.jsonc` to your Worker name and `vars.FEED` to your public feed slug (lowercase letters, numbers, hyphens). The file contains no original owner's account ID or credentials.
+3. Change `name` in `wrangler.jsonc` to your Worker name and `vars.FEED` to your public feed slug (lowercase letters, numbers, hyphens). The file contains no original owner's account ID or credentials. Before deploying your fork, customize `web/about.html` and `web/privacy.html` with your own operator name, contact address, deployment URL, and actual data practices.
 4. Run `npm run deploy:cloud`. This creates a Worker, a SQLite Durable Object binding, static widget assets, and a once-per-minute cron trigger. Keep the printed HTTPS URL. The management page stays unavailable until secrets are configured.
 5. In your Google Cloud project enable the Google Health API, configure the OAuth consent screen, and create a **Web application** OAuth client. Add `https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/callback` as an authorized redirect URI. Use your actual URL, including the exact path. Add your Google account as a test user if the OAuth app is in Testing.
 6. Configure the four secrets below with Wrangler's hidden interactive input. Keep them out of your shell command arguments, git, screenshots, and embed URLs.
@@ -78,3 +78,9 @@ Only allowlisted widget files are copied to `dist/` and uploaded. The secret fil
 After deployment check `/cloud-reading?feed=YOUR-FEED`, verify that an unrecognized feed returns 404, and test the iframe in light and dark mode. Keep credentials server-side. Never place an owner key, Google token or client secret in your public website.
 
 References: [Google Health setup](https://developers.google.com/health/setup), [Google OAuth token expiration](https://developers.google.com/identity/protocols/oauth2#expiration), [Cloudflare cron](https://developers.cloudflare.com/workers/configuration/cron-triggers/), [Durable Objects](https://developers.cloudflare.com/durable-objects/).
+
+## Moving a personal deployment out of Testing
+
+Set a public homepage and privacy-policy link on Google Auth Platform → Branding. This deployment supplies `/about.html` and `/privacy.html`. Save the configuration, then use Audience → Publish app. Publishing and Google verification are separate states: personal-use exceptions may apply, while broader distribution of restricted scopes can require review. Follow the requirements Google shows for your project.
+
+After the publishing status reads **In production**, reconnect from the owner page to obtain authorization issued in production. Do not assume a token issued during Testing has had its seven-day expiry removed. Production refresh tokens can still be revoked or expire for other reasons. Keep development and production OAuth clients/projects separate according to Google's guidance.
