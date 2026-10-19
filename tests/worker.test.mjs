@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { seal, unseal, digest } from '../cloudflare/security.mjs';
-import { PulseAccount } from '../cloudflare/worker.mjs';
+import worker, { PulseAccount } from '../cloudflare/worker.mjs';
 const env = { ADMIN_KEY: 'a'.repeat(43), TOKEN_KEY: 'b'.repeat(43), FEED: 'my-pulse', GOOGLE_CLIENT_ID: 'client', GOOGLE_CLIENT_SECRET: 'secret' };
 function fixture() {
   const map = new Map();
@@ -94,4 +94,12 @@ test('public snapshot stays available during slow polling; disconnect waits and 
     assert.equal(winner,true,'public snapshot must not wait for Google');
     assert.equal(await storage.get('account'),undefined);
   } finally {release();globalThis.fetch=original;}
+});
+
+test('static files use the built asset store; private routes never fall through', async () => {
+  const bindings = { ASSETS: { fetch: async req => new Response('license', {status:new URL(req.url).pathname==='/fonts/OFL-Figtree.txt'?200:404}) } };
+  assert.equal((await worker.fetch(request('/fonts/OFL-Figtree.txt'),bindings)).status,200);
+  assert.equal((await worker.fetch(request('/.env'),bindings)).status,404);
+  assert.equal((await worker.fetch(request('/_poll'),bindings)).status,404);
+  assert.equal((await worker.fetch(request('/connect',{method:'POST'}),bindings)).status,503);
 });

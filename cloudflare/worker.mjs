@@ -1,6 +1,5 @@
 import { random, digest, seal, unseal } from './security.mjs';
 const scope = 'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly';
-const assets = new Set(['/about.html','/privacy.html','/embed.html','/embed.css','/embed.mjs','/cloud-embed.mjs','/fonts/Figtree-Variable.woff2','/fonts/Cabin-Variable.woff2']);
 const routes = new Set(['/','/login','/connect','/callback','/disconnect','/cloud-reading']);
 const cookie = (name, value, seconds, sameSite='Strict') => `${name}=${value}; HttpOnly; Secure; SameSite=${sameSite}; Path=/; Max-Age=${seconds}`;
 function cookies(request) { return Object.fromEntries((request.headers.get('Cookie')||'').split(';').map(x=>x.trim().split('='))); }
@@ -14,7 +13,8 @@ function page(authorized, connected) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (assets.has(url.pathname) && ['GET','HEAD'].includes(request.method)) {
+    // The build script is the single allowlist; only its dist/ files reach ASSETS.
+    if (!routes.has(url.pathname) && ['GET','HEAD'].includes(request.method)) {
       const result = await env.ASSETS.fetch(request);
       const headers = new Headers(result.headers);
       headers.set('Content-Security-Policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors *");
@@ -34,7 +34,7 @@ export class PulseAccount {
   constructor(ctx, env) { this.storage=ctx.storage; this.env=env; this.queue=Promise.resolve(); }
   fetch(request) {
     if(request.method==='GET' && new URL(request.url).pathname==='/cloud-reading') return this.handle(request);
-    // All account mutations and refreshes are serialized, including across network awaits.
+    // ponytail: one owner, one mutation queue; shard by owner only for a multi-account service.
     const result=this.queue.then(()=>this.handle(request));
     this.queue=result.catch(()=>{});
     return result.catch(()=>response('Unable to complete this request. Please try again.',502));

@@ -29,4 +29,6 @@ test('cloud widget ages original measurement, retains age on failures and clears
   fail=false; payload={status:'waiting',reading:null,serverTime:1120000}; await refresh();
   assert.equal(el('bpm').textContent,'—');
   assert.equal(el('age').textContent,'No reading shared');
+  assert.equal(el('age').title,'');
+  assert.equal(el('age').ariaLabel,'No reading shared');
 });

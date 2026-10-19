@@ -1,8 +1,9 @@
-if (new URLSearchParams(location.search).get('layout') === 'compact') document.documentElement.dataset.layout = 'compact';
+const params = new URLSearchParams(location.search);
+if (params.get('layout') === 'compact') document.documentElement.dataset.layout = 'compact';
 const el = id => document.getElementById(id);
-const feed = new URLSearchParams(location.search).get('feed') || '';
-const cloudMode = new URLSearchParams(location.search).get('source') === 'cloud';
-const theme = new URLSearchParams(location.search).get('theme');
+const feed = params.get('feed') || '';
+const cloudMode = params.get('source') === 'cloud';
+const theme = params.get('theme');
 if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
 el('feed').textContent = feed;
 let socket, reconnect, timer, expiresAt = 0, receivedAt = 0, active = true;

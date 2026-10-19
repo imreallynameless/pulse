@@ -1,6 +1,7 @@
+const params = new URLSearchParams(location.search);
 const el = id => document.getElementById(id);
-const compact = new URLSearchParams(location.search).get('layout') === 'compact';
-const feed = new URLSearchParams(location.search).get('feed') || '';
+const compact = params.get('layout') === 'compact';
+const feed = params.get('feed') || '';
 let reading = null, ageAtReceipt = 0, receivedAt = 0, active = true, generation = 0, next, timer, controller;
 el('feed').textContent = feed;
 el('status').dataset.live = 'false';
@@ -31,7 +32,7 @@ async function refresh() {
       el('status').dataset.state = data.status === 'paused' ? 'paused' : 'latest';
       tick();
     } else {
-      reading = null; el('bpm').textContent = '—'; el('age').textContent = 'No reading shared';
+      reading = null; el('bpm').textContent = '—'; el('age').textContent = el('age').ariaLabel = 'No reading shared'; el('age').title = '';
       el('status').textContent = 'Waiting';
       el('status').dataset.state = 'waiting';
     }
