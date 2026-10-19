@@ -19,12 +19,12 @@
 @media(max-width:280px){main{gap:8px}.heart{width:32px}.copy{padding-left:12px}.reading{column-gap:8px}.value{font-size:24px}}
 
 /* A quiet header-sized variant; the original embed remains available. */
-[data-layout=compact] main{display:grid;grid-template-columns:18px max-content;min-height:0;padding:4px 0;gap:6px;justify-content:end;align-items:start;line-height:18px}
+[data-layout=compact] main{min-height:0;padding:4px 0;gap:6px;justify-content:flex-end;align-items:flex-start;line-height:18px}
 [data-layout=compact] .heart{width:18px;height:18px}
 [data-layout=compact] .heart svg{width:18px;height:18px}
-[data-layout=compact] .copy{border:0;padding:0;gap:0}
+[data-layout=compact] .copy{flex:0 1 auto;border:0;padding:0;gap:0}
 [data-layout=compact] .label{display:none}
-[data-layout=compact] .reading{display:grid;grid-template-columns:max-content max-content;gap:8px;align-items:center;min-height:18px}
+[data-layout=compact] .reading{flex-wrap:nowrap;gap:8px;justify-content:flex-end;align-items:center;min-height:18px}
 [data-layout=compact] .value{font-size:11px;font-weight:500;line-height:18px;letter-spacing:0;color:var(--muted)}
 [data-layout=compact] .unit,[data-layout=compact] #age,[data-layout=compact] #status{font-size:11px;font-weight:450;line-height:18px}
 [data-layout=compact] #age{white-space:nowrap}
