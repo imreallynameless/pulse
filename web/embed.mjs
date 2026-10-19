@@ -1,3 +1,4 @@
+if (new URLSearchParams(location.search).get('layout') === 'compact') document.documentElement.dataset.layout = 'compact';
 const el = id => document.getElementById(id);
 const feed = new URLSearchParams(location.search).get('feed') || '';
 const cloudMode = new URLSearchParams(location.search).get('source') === 'cloud';

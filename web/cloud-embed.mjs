@@ -1,4 +1,5 @@
 const el = id => document.getElementById(id);
+const compact = new URLSearchParams(location.search).get('layout') === 'compact';
 const feed = new URLSearchParams(location.search).get('feed') || '';
 let reading = null, ageAtReceipt = 0, receivedAt = 0, active = true, generation = 0, next, timer, controller;
 el('feed').textContent = feed;
@@ -8,7 +9,8 @@ function tick() {
   const seconds = Math.floor(Math.max(0, ageAtReceipt + performance.now() - receivedAt) / 1000);
   const amount = seconds < 60 ? seconds : seconds < 3600 ? Math.floor(seconds / 60) : seconds < 86400 ? Math.floor(seconds / 3600) : Math.floor(seconds / 86400);
   const unit = seconds < 60 ? 'second' : seconds < 3600 ? 'minute' : seconds < 86400 ? 'hour' : 'day';
-  el('age').textContent = `Measured ${amount} ${unit}${amount === 1 ? '' : 's'} ago`;
+  el('age').textContent = compact ? `${amount}${{second:'s',minute:'m',hour:'h',day:'d'}[unit]} ago` : `Measured ${amount} ${unit}${amount === 1 ? '' : 's'} ago`;
+  el('age').ariaLabel = `Measured ${amount} ${unit}${amount === 1 ? '' : 's'} ago`;
 }
 async function refresh() {
   const current = generation;

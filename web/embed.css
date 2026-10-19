@@ -17,3 +17,14 @@
 #status[data-state=latest]{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 #feed{display:none}
 @media(max-width:280px){main{gap:8px}.heart{width:32px}.copy{padding-left:12px}.reading{column-gap:8px}.value{font-size:24px}}
+
+/* A quiet header-sized variant; the original embed remains available. */
+[data-layout=compact] main{min-height:0;padding:4px 0;gap:6px;justify-content:flex-end;line-height:1.4}
+[data-layout=compact] .heart{width:14px;height:16px}
+[data-layout=compact] .heart svg{width:14px;height:14px}
+[data-layout=compact] .copy{flex:0 1 auto;border:0;padding:0;gap:0}
+[data-layout=compact] .label{display:none}
+[data-layout=compact] .reading{flex-wrap:nowrap;gap:8px;justify-content:flex-end}
+[data-layout=compact] .value{font-size:11px;font-weight:400;line-height:1.4;letter-spacing:0;color:var(--muted)}
+[data-layout=compact] .unit,[data-layout=compact] #age,[data-layout=compact] #status{font-size:11px;line-height:1.4}
+[data-layout=compact] #age{white-space:nowrap}
