@@ -1,5 +1,8 @@
 const el = id => document.getElementById(id);
 const feed = new URLSearchParams(location.search).get('feed') || '';
+const cloudMode = new URLSearchParams(location.search).get('source') === 'cloud';
+const theme = new URLSearchParams(location.search).get('theme');
+if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
 el('feed').textContent = feed;
 let socket, reconnect, timer, expiresAt = 0, receivedAt = 0, active = true;
 function status(text) {
@@ -40,8 +43,12 @@ function resume() {
   active = true; clearInterval(timer); timer = setInterval(tick, 250); connect();
 }
 window.addEventListener('pagehide', () => {
+  if (cloudMode) return;
   active = false; clearTimeout(reconnect); clearInterval(timer);
   const old = socket; socket = null; old?.close(); status('Offline');
 });
-window.addEventListener('pageshow', event => { if (event.persisted) resume(); });
-resume();
+window.addEventListener('pageshow', event => { if (event.persisted && !cloudMode) resume(); });
+if (cloudMode) {
+  active = false;
+  import('./cloud-embed.mjs');
+} else resume();
