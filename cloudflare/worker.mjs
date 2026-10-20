@@ -112,7 +112,7 @@ export class PulseAccount {
   }
   async google(url,options={}) {
     const res=await fetch(url,{...options,signal:AbortSignal.timeout(15000)});
-    if(!res.ok) throw new Error('Google unavailable');
+    if(!res.ok) throw Object.assign(new Error('Google unavailable'),{status:res.status});
     return res.json();
   }
   async tokenRequest(fields) {
@@ -138,7 +138,10 @@ export class PulseAccount {
       url.searchParams.set('pageToken',scan.pageToken);
       let newest=account.latest, pages=0;
       do {
-        const data=await this.google(url,{headers:{Authorization:`Bearer ${tokens.access_token}`}});
+        const data=await this.google(url,{headers:{Authorization:`Bearer ${tokens.access_token}`}}).catch(error=>{
+          if(error.status===400 && url.searchParams.get('pageToken')) account.scan=null;
+          throw error;
+        });
         for(const point of data.dataPoints||[]) {
           const bpm=Number(point.heartRate?.beatsPerMinute),measuredAt=Date.parse(point.heartRate?.sampleTime?.physicalTime);
           if(Number.isInteger(bpm)&&bpm>=1&&bpm<=300&&Number.isFinite(measuredAt)&&measuredAt>0&&measuredAt<=now&&(!newest||measuredAt>newest.measuredAt)) newest={bpm,measuredAt};

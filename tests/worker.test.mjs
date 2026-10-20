@@ -179,3 +179,24 @@ test('a failed page retains earlier readings and resumes without skipping the fa
     stored=await storage.get('account'); assert.equal(stored.error,false); assert.equal(stored.scan,null);
   } finally {globalThis.fetch=original;}
 });
+
+test('rejected pagination restarts without a cursor; transient failures keep progress', async () => {
+  const original=globalThis.fetch;
+  try {
+    for(const status of [400,429,503]) {
+      const {account,storage}=fixture(),now=Date.now();
+      await storage.put('account',{tokens:await seal({access_token:'access',expiresAt:now+3600000},env.TOKEN_KEY),scan:{since:now-3600000,until:now-60000,pageToken:'cursor'}});
+      globalThis.fetch=async()=>new Response('',{status});
+      await account.poll();
+      const stored=await storage.get('account');
+      assert.equal(stored.scan?.pageToken,status===400?undefined:'cursor');
+      stored.nextCheck=0; await storage.put('account',stored);
+      globalThis.fetch=async url=>{
+        assert.equal(new URL(url).searchParams.get('pageToken'),status===400?'':'cursor');
+        return Response.json({dataPoints:[]});
+      };
+      await account.poll();
+      assert.equal((await storage.get('account')).error,false);
+    }
+  } finally {globalThis.fetch=original;}
+});
