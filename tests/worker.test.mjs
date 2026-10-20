@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seal, unseal, digest } from '../cloudflare/security.mjs';
-import worker, { PulseAccount } from '../cloudflare/worker.mjs';
+import { seal, unseal, digest } from '../cloudflare/security.ts';
+import worker, { PulseAccount } from '../cloudflare/worker.ts';
 const env = { ADMIN_KEY: 'a'.repeat(43), TOKEN_KEY: 'b'.repeat(43), FEED: 'my-pulse', GOOGLE_CLIENT_ID: 'client', GOOGLE_CLIENT_SECRET: 'secret' };
 function fixture() {
   const map = new Map();
@@ -121,4 +121,82 @@ test('login enforces actual body size without Content-Length and accepts valid f
   const result=await account.fetch(request('/login',{method:'POST',headers,body:new URLSearchParams({key:env.ADMIN_KEY})}));
   assert.equal(result.status,303);
   assert.match(result.headers.get('Set-Cookie'),/pulse_session=/);
+});
+
+test('large responses retain progress and resume the same query beyond six pages', async () => {
+  const {account,storage}=fixture(),now=Date.now(), original=globalThis.fetch;
+  const latest={bpm:65,measuredAt:now-3600000};
+  await storage.put('account',{tokens:await seal({access_token:'access',expiresAt:now+3600000},env.TOKEN_KEY),latest});
+  const filters=[]; let calls=0;
+  globalThis.fetch=async input=>{
+    const url=new URL(input); filters.push(url.searchParams.get('filter'));
+    const page=Number(url.searchParams.get('pageToken')||0); calls++;
+    return Response.json({dataPoints:[{heartRate:{beatsPerMinute:70+page,sampleTime:{physicalTime:new Date(now-60000+page).toISOString()}}}],...(page<7?{nextPageToken:String(page+1)}:{})});
+  };
+  try {
+    await account.fetch(request('/_poll'));
+    let stored=await storage.get('account');
+    assert.equal(stored.error,false); assert.equal(stored.latest.bpm,75); assert.equal(calls,6);
+    assert.ok(filters[0].includes(new Date(latest.measuredAt-300000).toISOString()));
+    await account.fetch(request('/_poll'));
+    stored=await storage.get('account');
+    assert.equal(stored.latest.bpm,77); assert.equal(stored.error,false); assert.equal(calls,8);
+    assert.ok(filters.every(f=>f===filters[0]),'pagination must retain the original time window');
+    await account.fetch(request('/_poll'));
+    assert.ok(filters[8].includes(new Date(stored.latest.measuredAt-300000).toISOString()));
+  } finally {globalThis.fetch=original;}
+});
+
+test('failed refresh retries within five minutes, including old hour backoff', async () => {
+  const {account,storage}=fixture(),now=Date.now(),original=globalThis.fetch;
+  await storage.put('account',{tokens:await seal({access_token:'access',expiresAt:now+3600000},env.TOKEN_KEY),failures:8,nextCheck:now+3600000});
+  let calls=0;
+  globalThis.fetch=async()=>{calls++;return new Response('unavailable',{status:503});};
+  try {
+    await account.fetch(request('/_poll'));
+    const stored=await storage.get('account');
+    assert.equal(calls,1,'old hour backoff must not delay recovery');
+    assert.ok(stored.nextCheck<=Date.now()+300000);
+  } finally {globalThis.fetch=original;}
+});
+
+test('a failed page retains earlier readings and resumes without skipping the failed page', async () => {
+  const {account,storage}=fixture(),now=Date.now(),original=globalThis.fetch;
+  await storage.put('account',{tokens:await seal({access_token:'access',expiresAt:now+3600000},env.TOKEN_KEY)});
+  let fail=true;
+  globalThis.fetch=async input=>{
+    const cursor=new URL(input).searchParams.get('pageToken');
+    if(cursor==='next' && fail) return new Response('failure',{status:503});
+    if(cursor==='next') return Response.json({dataPoints:[]});
+    return Response.json({dataPoints:[{heartRate:{beatsPerMinute:80,sampleTime:{physicalTime:new Date(now-1000).toISOString()}}}],nextPageToken:'next'});
+  };
+  try {
+    await account.fetch(request('/_poll'));
+    let stored=await storage.get('account');
+    assert.equal(stored.error,true); assert.equal(stored.latest.bpm,80); assert.equal(stored.scan.pageToken,'next');
+    fail=false; stored.nextCheck=0; await storage.put('account',stored);
+    await account.fetch(request('/_poll'));
+    stored=await storage.get('account'); assert.equal(stored.error,false); assert.equal(stored.scan,null);
+  } finally {globalThis.fetch=original;}
+});
+
+test('rejected pagination restarts without a cursor; transient failures keep progress', async () => {
+  const original=globalThis.fetch;
+  try {
+    for(const status of [400,429,503]) {
+      const {account,storage}=fixture(),now=Date.now();
+      await storage.put('account',{tokens:await seal({access_token:'access',expiresAt:now+3600000},env.TOKEN_KEY),scan:{since:now-3600000,until:now-60000,pageToken:'cursor'}});
+      globalThis.fetch=async()=>new Response('',{status});
+      await account.poll();
+      const stored=await storage.get('account');
+      assert.equal(stored.scan?.pageToken,status===400?undefined:'cursor');
+      stored.nextCheck=0; await storage.put('account',stored);
+      globalThis.fetch=async url=>{
+        assert.equal(new URL(url).searchParams.get('pageToken'),status===400?'':'cursor');
+        return Response.json({dataPoints:[]});
+      };
+      await account.poll();
+      assert.equal((await storage.get('account')).error,false);
+    }
+  } finally {globalThis.fetch=original;}
 });

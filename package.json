@@ -2,23 +2,27 @@
   "name": "pulse-fitbit",
   "version": "0.1.0",
   "private": true,
-  "description": "An embeddable heart-rate widget: Google Health latest measurements or direct Bluetooth streaming.",
+  "description": "An embeddable latest-heart-rate widget powered by Google Health.",
   "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "start": "node --env-file-if-exists=.env server.mjs",
-    "test": "node --test",
-    "setup": "node scripts/setup.mjs",
-    "build:cloud": "node scripts/build-cloud.mjs",
-    "deploy:cloud": "npm run build:cloud && wrangler deploy"
-  },
-  "dependencies": {
-    "ws": "^8.22.0"
+    "start": "tsx --env-file-if-exists=.env server.ts",
+    "test": "node --import tsx --test tests/*.test.mjs",
+    "build:cloud": "tsx scripts/build-cloud.ts",
+    "deploy:cloud": "npm run build:cloud && wrangler deploy",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "probe": "tsx --env-file-if-exists=.env scripts/cloud-probe.ts",
+    "prestart": "npm run build:cloud"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
     "wrangler": "4.151.1"
   }
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { publicSnapshot } from '../cloud-snapshot.mjs';
+import { publicSnapshot } from '../cloud-snapshot.ts';
 const now = 1800000000000;
 const data = { feed: 'alice', sharing: true, checkedAt: now, latest: { bpm: 72, measuredAt: now - 600000, source: 'FITBIT', firstSeenAt: now }, secret: 'never expose' };
 test('cloud keeps original measurement time and exposes only public fields', () => {
@@ -25,8 +25,8 @@ test('snapshot writer works in a fresh checkout path containing spaces', async (
   const {pathToFileURL}=await import('node:url');
   const dir=await mkdtemp(join(tmpdir(),'pulse checkout '));
   try {
-    const modulePath=join(dir,'cloud-snapshot.mjs');
-    await copyFile(new URL('../cloud-snapshot.mjs',import.meta.url),modulePath);
+    const modulePath=join(dir,'cloud-snapshot.ts');
+    await copyFile(new URL('../cloud-snapshot.ts',import.meta.url),modulePath);
     const {writeCloudSnapshot}=await import(pathToFileURL(modulePath));
     await writeCloudSnapshot(data);
     assert.deepEqual(JSON.parse(await readFile(join(dir,'recordings/cloud-latest.json'),'utf8')),data);

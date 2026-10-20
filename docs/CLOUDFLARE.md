@@ -6,7 +6,7 @@ This is a single-owner, self-hosted widget. Fork the MIT repository and use your
 
 Fitbit / supported Google Health sources → Google Health cloud → Cloudflare Worker → widget.
 
-The phone and Google must sync the measurement first. The Mac and local Bluetooth broadcaster can be off. Cloudflare checks once per minute, the iframe requests the saved snapshot every five seconds, and the age advances every second. This adds roughly 0–65 seconds after a measurement becomes available in Google's API under normal successful scheduling/network conditions; it is not a guarantee or a device-to-website latency claim. No webhook is implemented.
+The phone and Google must sync the measurement first. Your Mac can be off. Cloudflare checks once per minute, the iframe requests the saved snapshot every five seconds, and the age advances every second. This adds roughly 0–65 seconds after a measurement becomes available in Google's API under normal successful scheduling/network conditions; it is not a guarantee or a device-to-website latency claim. No webhook is implemented.
 
 Fitbit access was verified locally. Apple Watch data depends on Apple Health import into Google Health and API availability for that account; it is not yet verified by this project.
 
@@ -58,9 +58,8 @@ Change `feed` to your configured slug. Set `theme=dark` for a dark host page, or
 - Owner sessions expire after 24 hours. This does not stop background sharing. Enter the owner key again to manage it.
 - **Stop sharing & disconnect** removes stored tokens, the reading, and pending sign-in. It does not revoke the app in Google's account settings; you can remove Google access there separately. It cannot retract readings already seen by others.
 - Google apps in **Testing** generally have seven-day refresh-token expiry for this scope. Reconnect when authorization expires. Production publishing/verification is a separate Google process, not something this deployment bypasses.
-- Each successful poll searches the past 24 hours. On the first connection, readings older than that will not be found. Once a reading is found it is retained with its original age, including across restarts, until replaced or sharing is stopped.
-- Failures retain the previous reading and show **Updates paused**. Retry delay grows from one minute up to one hour. A successful check resets the delay. A connection that has not checked successfully in two minutes is also marked paused. A newly connected account without data shows Waiting.
-- The hosted deployment supports **cloud mode only**. The original Bluetooth broadcaster/WebSocket relay continues to use the Node server described in [SELF_HOSTING.md](SELF_HOSTING.md).
+- The first fetch searches the past 24 hours. After catching up, new fetches start five minutes before the latest measurement, looking back no more than 24 hours. Each poll reads up to six pages and saves any remaining pagination progress for the next poll. Once a reading is found it is retained with its original age, including across restarts, until replaced or sharing is stopped.
+- Failures retain the previous reading and show **Updates paused**. Retry delay grows from one minute up to five minutes. A successful check resets the delay. A connection that has not checked successfully in two minutes is also marked paused. A newly connected account without data shows Waiting.
 - Built-in Worker observability is disabled to avoid recording OAuth callback URLs. Do not enable request logging or attach private health recordings to public issues without reviewing what they contain.
 - Check Cloudflare's current quotas and charges for Workers, Durable Objects and storage. Every visible widget polls every five seconds; traffic grows with concurrent visitors. This is a personal-site architecture, not an unlimited hosted service.
 
@@ -73,7 +72,7 @@ npx wrangler deploy --dry-run
 npm run deploy:cloud
 ```
 
-Only allowlisted widget files are copied to `dist/` and uploaded. The secret files, local recordings and Node broadcaster are not deployed. Keep `migrations` history in `wrangler.jsonc`; do not remove or rename the Durable Object class when updating an existing deployment.
+Only allowlisted widget files are copied to `dist/` and uploaded. The secret files, local recordings and local tester are not deployed. Keep `migrations` history in `wrangler.jsonc`; do not remove or rename the Durable Object class when updating an existing deployment.
 
 After deployment check `/cloud-reading?feed=YOUR-FEED`, verify that an unrecognized feed returns 404, and test the iframe in light and dark mode. Keep credentials server-side. Never place an owner key, Google token or client secret in your public website.
 

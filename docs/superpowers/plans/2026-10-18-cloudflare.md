@@ -11,7 +11,6 @@
 - Latest measured BPM plus its original age; never claim live.
 - Single-owner deployment; admin secret protects connection/disconnection.
 - Google secrets stay server-side; public response includes only BPM, measurement time, status, server time.
-- Keep existing Bluetooth local mode and portfolio typography/themes.
 
 ## Review Focus
 - Forged OAuth state/cookie must fail; test callback rejection.

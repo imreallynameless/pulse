@@ -1,5 +1,7 @@
-const el = id => document.getElementById(id);
-let latest;
+import type { Reading } from '../types.ts';
+interface Observation extends Reading { source: string; firstSeenAt: number }
+const el = (id: string) => document.getElementById(id)!;
+let latest: Observation | null;
 function age() {
   if (latest) el('age').textContent = `Measured ${Math.max(0, Math.floor((Date.now() - latest.measuredAt) / 1000))} seconds ago`;
 }
@@ -7,9 +9,9 @@ async function update() {
   try {
     const response = await fetch('/status');
     if (!response.ok) throw new Error();
-    const data = await response.json();
+    const data: { configured: boolean; connected: boolean; cloudFeed?: string; latest: Observation | null; checkedAt: number; error?: string; observations?: Observation[] } = await response.json();
     el('status').textContent = !data.configured ? 'Setup needed: Google OAuth credentials have not been added yet.' : data.connected ? 'Connected · checking for new readings every 30 seconds' : 'Ready to connect your Google Health account.';
-    el('connect').disabled = !data.configured || data.connected;
+    (el('connect') as HTMLButtonElement).disabled = !data.configured || data.connected;
     el('disconnect').hidden = !data.connected;
     el('sharing').textContent = data.connected && data.cloudFeed ? `Sharing latest BPM and measurement time to widget feed: ${data.cloudFeed}. Disconnect locally to stop sharing.` : '';
     latest = data.latest;
