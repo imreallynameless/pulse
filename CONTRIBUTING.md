@@ -1,19 +1,9 @@
 # Contributing
 
-Fork this repository, create a branch, run `npm test`, and open a pull request describing the behavior changed and how you checked it. Use Node 22 or later. Run npm ci first. The WebSocket relay uses ws; there is no build step.
+Fork, create a branch, and use Node.js 22+. Run `npm ci`, `npm test`, `npm run build:cloud`, and `npx wrangler deploy --dry-run` before opening a pull request.
 
-## Hardware reports
+Keep Google authorization server-side, owner controls authenticated, and public responses limited to latest BPM, measurement time, server time and status. Preserve measurement age during failures; never describe synced readings as live.
 
-Please report device model/firmware, macOS and Chrome versions, test duration, approximate notification cadence, whether RR intervals appeared, and disconnect/reconnect behavior. Do not upload raw recordings, tokens, Bluetooth identifiers, or personal health data to public issues. Synthetic byte fixtures are preferable for parser bugs.
+Use synthetic measurements in tests. Do not attach credentials, OAuth callback URLs, or private health data to issues. Distinguish mocked tests from actual Google Health verification.
 
-A UI smoke test or passing unit test is not proof of a working Fitbit connection. Clearly label what was tested on real hardware and what remains unverified.
-
-## Priorities
-
-1. Prove the hardware feed and measure notification timing.
-2. Keep readings local until the user explicitly starts broadcasting.
-3. Preserve every new notification, including unchanged BPM values.
-4. Distinguish receipt cadence from physiological latency.
-5. Never show stale readings as live.
-
-Contributions are made under the repository's MIT license.
+Contributions use the repository's MIT license; bundled fonts retain their OFL licenses.

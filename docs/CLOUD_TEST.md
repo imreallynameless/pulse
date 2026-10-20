@@ -1,6 +1,6 @@
 # Private Google Health connection experiment
 
-This is a local cloud connection prototype, separate from the Bluetooth receiver. It can share a latest-reading snapshot with the widget when explicitly configured. It does not implement webhooks or production account management.
+This is a local cloud connection prototype. It can share a latest-reading snapshot with the widget when explicitly configured. It does not implement webhooks or production account management.
 
 1. In a development Google Cloud project, enable **Google Health API**.
 2. Configure Google Auth Platform for external testing and add your Google Health account as a test user.
