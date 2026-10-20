@@ -6,7 +6,7 @@ const data = { feed: 'alice', sharing: true, checkedAt: now, latest: { bpm: 72, 
 test('cloud keeps original measurement time and exposes only public fields', () => {
   const result = publicSnapshot(data, 'alice', now);
   assert.deepEqual(result, { status: 'latest', reading: { bpm: 72, measuredAt: now - 600000 }, serverTime: now });
-  assert.equal(publicSnapshot({...data, checkedAt: now + 30000}, 'alice', now + 30000).reading.measuredAt, result.reading.measuredAt);
+  assert.equal(publicSnapshot({...data, checkedAt: now + 30000}, 'alice', now + 30000).reading!.measuredAt, result.reading!.measuredAt);
 });
 test('cloud feed isolation and stop sharing clear public readings', () => {
   assert.equal(publicSnapshot(data, 'bob', now).reading, null);
@@ -27,7 +27,7 @@ test('snapshot writer works in a fresh checkout path containing spaces', async (
   try {
     const modulePath=join(dir,'cloud-snapshot.ts');
     await copyFile(new URL('../cloud-snapshot.ts',import.meta.url),modulePath);
-    const {writeCloudSnapshot}=await import(pathToFileURL(modulePath));
+    const {writeCloudSnapshot}=await import(pathToFileURL(modulePath).href);
     await writeCloudSnapshot(data);
     assert.deepEqual(JSON.parse(await readFile(join(dir,'recordings/cloud-latest.json'),'utf8')),data);
   } finally {await rm(dir,{recursive:true,force:true});}

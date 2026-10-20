@@ -10,10 +10,10 @@
   },
   "scripts": {
     "start": "tsx --env-file-if-exists=.env server.ts",
-    "test": "node --import tsx --test tests/*.test.mjs",
+    "test": "node --import tsx --test tests/*.test.ts",
     "build:cloud": "tsx scripts/build-cloud.ts",
     "deploy:cloud": "npm run build:cloud && wrangler deploy",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.tests.json",
     "probe": "tsx --env-file-if-exists=.env scripts/cloud-probe.ts",
     "prestart": "npm run build:cloud"
   },
