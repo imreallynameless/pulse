@@ -8,4 +8,4 @@ Use synthetic measurements in tests. Do not attach credentials, OAuth callback U
 
 Contributions use the repository's MIT license; bundled fonts retain their OFL licenses.
 
-Application code is TypeScript with strict checking. The existing regression harness stays in JavaScript and loads TypeScript through tsx. Browser code builds to JavaScript in `dist/`; `npm start` builds it automatically. Use `npm run probe` for the private local Google tester.
+Application code is TypeScript with strict checking. Tests also use strict TypeScript and run through tsx. Browser code builds to JavaScript in `dist/`; `npm start` builds it automatically. Use `npm run probe` for the private local Google tester.
