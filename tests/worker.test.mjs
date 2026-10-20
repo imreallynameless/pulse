@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seal, unseal, digest } from '../cloudflare/security.mjs';
-import worker, { PulseAccount } from '../cloudflare/worker.mjs';
+import { seal, unseal, digest } from '../cloudflare/security.ts';
+import worker, { PulseAccount } from '../cloudflare/worker.ts';
 const env = { ADMIN_KEY: 'a'.repeat(43), TOKEN_KEY: 'b'.repeat(43), FEED: 'my-pulse', GOOGLE_CLIENT_ID: 'client', GOOGLE_CLIENT_SECRET: 'secret' };
 function fixture() {
   const map = new Map();

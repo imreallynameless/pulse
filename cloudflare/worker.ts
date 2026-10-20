@@ -1,17 +1,23 @@
-import { random, digest, seal, unseal } from './security.mjs';
+import type { Reading, Tokens, TokenResponse, HeartRatePage } from '../types.ts';
+import type { Sealed } from './security.ts';
+interface Env { ADMIN_KEY: string; TOKEN_KEY: string; GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_SECRET: string; FEED: string; ASSETS: Fetcher; ACCOUNT: DurableObjectNamespace }
+interface Account { tokens: Sealed; latest?: Reading | null; checkedAt?: number | null; error?: boolean; failures?: number; nextCheck?: number; scan?: {since:number; until:number; pageToken:string} | null }
+interface Pending { state:string; verifier:string; browser:string; expires:number; origin:string }
+interface Session { hash:string; expires:number }
+import { random, digest, seal, unseal } from './security.ts';
 const scope = 'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly';
 const routes = new Set(['/','/login','/connect','/callback','/disconnect','/cloud-reading']);
-const cookie = (name, value, seconds, sameSite='Strict') => `${name}=${value}; HttpOnly; Secure; SameSite=${sameSite}; Path=/; Max-Age=${seconds}`;
-function cookies(request) { return Object.fromEntries((request.headers.get('Cookie')||'').split(';').map(x=>x.trim().split('='))); }
-function response(body, status=200, type='text/plain', extra={}) {
+const cookie = (name: string, value: string, seconds: number, sameSite='Strict') => `${name}=${value}; HttpOnly; Secure; SameSite=${sameSite}; Path=/; Max-Age=${seconds}`;
+function cookies(request: Request) { return Object.fromEntries((request.headers.get('Cookie')||'').split(';').map(x=>x.trim().split('='))); }
+function response(body: BodyInit | null, status=200, type='text/plain', extra: Record<string,string>={}) {
   return new Response(body,{status,headers:{'Content-Type':`${type}; charset=utf-8`,'Cache-Control':'no-store','Referrer-Policy':'same-origin','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://accounts.google.com; frame-ancestors 'none'; base-uri 'none'",...extra}});
 }
-const redirect = (url, extra={}) => response('',303,'text/plain',{Location:url,...extra});
-function page(authorized, connected) {
+const redirect = (url: string, extra: Record<string,string>={}) => response('',303,'text/plain',{Location:url,...extra});
+function page(authorized: boolean, connected: boolean) {
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pulse connection</title><style>body{font:16px system-ui;background:#f3efff;color:#1d1830;max-width:32rem;margin:12vh auto;padding:24px}h1{font-weight:500}p{line-height:1.6;color:#655d78}button,input{font:inherit;padding:12px;border:1px solid #655d78;border-radius:6px}button{cursor:pointer;background:#1d1830;color:#f3efff}input{max-width:90%;margin:0 0 16px}a{color:inherit}</style><h1>pulse</h1>${!authorized ? '<p>Enter your private owner key to manage this feed.</p><form method="post" action="/login"><input name="key" type="password" autocomplete="current-password" required aria-label="Owner key"><br><button>unlock</button></form>' : `<p>${connected?'Google is connected. Your latest measured heart rate is shared publicly.':'Connect Google Health to publish your latest measured heart rate and its age.'}</p><form method="post" action="/connect"><button>${connected?'reconnect Google Health':'connect Google Health'}</button></form>${connected?'<p><a href="/embed.html?feed=FEED&source=cloud">preview widget</a></p><form method="post" action="/disconnect"><button>stop sharing &amp; disconnect</button></form>':''}<p>This is the latest synced measurement, not a live stream. Google apps in Testing require reconnecting after seven days.</p>`}</html>`;
 }
 export default {
-  async fetch(request, env) {
+  async fetch(request: Request, env: Env) {
     const url = new URL(request.url);
     // The build script is the single allowlist; only its dist/ files reach ASSETS.
     if (!routes.has(url.pathname) && ['GET','HEAD'].includes(request.method)) {
@@ -26,20 +32,23 @@ export default {
     if (!env.ADMIN_KEY || !env.TOKEN_KEY || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return response('Connection setup is not complete.',503);
     return env.ACCOUNT.get(env.ACCOUNT.idFromName('owner')).fetch(request);
   },
-  async scheduled(event, env, ctx) {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(env.ACCOUNT.get(env.ACCOUNT.idFromName('owner')).fetch('https://internal/_poll'));
   }
 };
 export class PulseAccount {
-  constructor(ctx, env) { this.storage=ctx.storage; this.env=env; this.queue=Promise.resolve(); }
-  async fetch(request) {
+  storage: DurableObjectStorage;
+  env: Env;
+  queue: Promise<unknown>;
+  constructor(ctx: DurableObjectState, env: Env) { this.storage=ctx.storage; this.env=env; this.queue=Promise.resolve(); }
+  async fetch(request: Request) {
     if(request.method==='POST' && new URL(request.url).pathname==='/login') {
       if(request.headers.get('Origin')!==new URL(request.url).origin) return response('Invalid origin',403);
       if(Number(request.headers.get('Content-Length'))>4096) return response('Request too large',413);
       const reader=request.body?.getReader();
-      const chunks=[]; let size=0, timeout;
+      const chunks: Uint8Array[]=[]; let size=0, timeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        const expired=new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('timeout')),5000);});
+        const expired=new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new Error('timeout')),5000);});
         while(reader) {
           const {done,value}=await Promise.race([reader.read(),expired]);
           if(done) break;
@@ -49,7 +58,7 @@ export class PulseAccount {
         }
         request=new Request(request.url,{method:request.method,headers:request.headers,body:new Blob(chunks)});
       } catch { return response('Unable to read login request',408); }
-      finally { clearTimeout(timeout); if(reader) void reader.cancel().catch(()=>{}); }
+      finally { if(timeout !== undefined) clearTimeout(timeout); if(reader) void reader.cancel().catch(()=>{}); }
     }
     if(request.method==='GET' && new URL(request.url).pathname==='/cloud-reading') return this.handle(request);
     // ponytail: one owner, one mutation queue; shard by owner only for a multi-account service.
@@ -57,28 +66,29 @@ export class PulseAccount {
     this.queue=result.catch(()=>{});
     return result.catch(()=>response('Unable to complete this request. Please try again.',502));
   }
-  async authorized(request) {
+  async authorized(request: Request) {
     const token=cookies(request).pulse_session;
-    const session=await this.storage.get('session');
+    const session=await this.storage.get<Session>('session');
     return Boolean(token && session && session.expires>Date.now() && await digest(token)===session.hash);
   }
-  async handle(request) {
+  async handle(request: Request) {
     const url=new URL(request.url), path=url.pathname;
     if (path==='/_poll') { await this.poll(); return response(null,204); }
     if (request.method==='GET' && path==='/cloud-reading') {
       if(url.searchParams.get('feed')!==this.env.FEED) return response('Not found',404);
-      const account=await this.storage.get('account'), now=Date.now();
+      const account=await this.storage.get<Account>('account'), now=Date.now();
       const latest=account?.tokens && account.latest;
       const valid=latest && Number.isInteger(latest.bpm) && latest.bpm>=1 && latest.bpm<=300 && Number.isFinite(latest.measuredAt) && latest.measuredAt>0 && latest.measuredAt<=now;
       return response(JSON.stringify({status:!valid?'waiting':account.error || !account.checkedAt || now-account.checkedAt>120000?'paused':'latest',reading:valid?{bpm:latest.bpm,measuredAt:latest.measuredAt}:null,serverTime:now}),200,'application/json');
     }
-    if(request.method==='GET' && path==='/') return response(page(await this.authorized(request),Boolean((await this.storage.get('account'))?.tokens)).replace('feed=FEED',`feed=${encodeURIComponent(this.env.FEED)}`),200,'text/html');
+    if(request.method==='GET' && path==='/') return response(page(await this.authorized(request),Boolean((await this.storage.get<Account>('account'))?.tokens)).replace('feed=FEED',`feed=${encodeURIComponent(this.env.FEED)}`),200,'text/html');
     if(request.method==='POST') {
       if(request.headers.get('Origin')!==url.origin) return response('Invalid origin',403);
       if(path==='/login') {
         if(Number(request.headers.get('Content-Length'))>4096) return response('Request too large',413);
         const form=await request.formData();
-        if(typeof form.get('key')!=='string' || await digest(form.get('key'))!==await digest(this.env.ADMIN_KEY)) return response('Invalid owner key',403);
+        const ownerKey=form.get('key');
+        if(typeof ownerKey!=='string' || await digest(ownerKey)!==await digest(this.env.ADMIN_KEY)) return response('Invalid owner key',403);
         const token=random();
         await this.storage.put('session',{hash:await digest(token),expires:Date.now()+86400000});
         return redirect('/',{'Set-Cookie':cookie('pulse_session',token,86400)});
@@ -97,11 +107,11 @@ export class PulseAccount {
       }
     }
     if(request.method==='GET' && path==='/callback') {
-      const pending=await this.storage.get('pending');
+      const pending=await this.storage.get<Pending>('pending');
       if(!pending || pending.expires<Date.now() || pending.origin!==url.origin || pending.browser!==cookies(request).pulse_auth || pending.state!==url.searchParams.get('state')) return response('Expired or invalid sign-in. Return to Pulse and reconnect.',403);
       await this.storage.delete('pending');
       if(!url.searchParams.get('code')) return response('Permission was not granted. Return to Pulse to retry.',400);
-      const tokens=await this.tokenRequest({grant_type:'authorization_code',code:url.searchParams.get('code'),code_verifier:pending.verifier,redirect_uri:pending.origin+'/callback'});
+      const tokens=await this.tokenRequest({grant_type:'authorization_code',code:url.searchParams.get('code')!,code_verifier:pending.verifier,redirect_uri:pending.origin+'/callback'});
       if(!tokens.refresh_token) return response('Google did not grant background access. Please reconnect.',400);
       await this.google('https://health.googleapis.com/v4/users/me/identity',{headers:{Authorization:`Bearer ${tokens.access_token}`}});
       await this.storage.put('account',{tokens:await seal(tokens,this.env.TOKEN_KEY),latest:null,checkedAt:null,error:false});
@@ -110,23 +120,23 @@ export class PulseAccount {
     }
     return response('Not found',404);
   }
-  async google(url,options={}) {
+  async google<T=unknown>(url: string | URL,options: RequestInit={}) {
     const res=await fetch(url,{...options,signal:AbortSignal.timeout(15000)});
     if(!res.ok) throw Object.assign(new Error('Google unavailable'),{status:res.status});
-    return res.json();
+    return res.json<T>();
   }
-  async tokenRequest(fields) {
-    const data=await this.google('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:this.env.GOOGLE_CLIENT_ID,client_secret:this.env.GOOGLE_CLIENT_SECRET,...fields})});
+  async tokenRequest(fields: Record<string,string>): Promise<Tokens> {
+    const data=await this.google<TokenResponse>('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:this.env.GOOGLE_CLIENT_ID,client_secret:this.env.GOOGLE_CLIENT_SECRET,...fields})});
     if(!data.access_token || !Number.isFinite(Number(data.expires_in))) throw new Error('Invalid token response');
-    return {...data,expiresAt:Date.now()+Number(data.expires_in)*1000};
+    return {...data,access_token:data.access_token,expiresAt:Date.now()+Number(data.expires_in)*1000};
   }
   async poll() {
-    const account=await this.storage.get('account');
-    if(!account?.tokens || (account.nextCheck>Date.now() && account.nextCheck<=Date.now()+300000)) return;
+    const account=await this.storage.get<Account>('account');
+    if(!account?.tokens || ((account.nextCheck||0)>Date.now() && (account.nextCheck||0)<=Date.now()+300000)) return;
     try {
-      let tokens=await unseal(account.tokens,this.env.TOKEN_KEY);
+      let tokens=await unseal<Tokens>(account.tokens,this.env.TOKEN_KEY);
       if(tokens.expiresAt<Date.now()+60000) {
-        tokens={...tokens,...await this.tokenRequest({grant_type:'refresh_token',refresh_token:tokens.refresh_token})};
+        tokens={...tokens,...await this.tokenRequest({grant_type:'refresh_token',refresh_token:tokens.refresh_token!})};
         account.tokens=await seal(tokens,this.env.TOKEN_KEY);
       }
       const now=Date.now();
@@ -138,12 +148,12 @@ export class PulseAccount {
       url.searchParams.set('pageToken',scan.pageToken);
       let newest=account.latest, pages=0;
       do {
-        const data=await this.google(url,{headers:{Authorization:`Bearer ${tokens.access_token}`}}).catch(error=>{
+        const data=await this.google<HeartRatePage>(url,{headers:{Authorization:`Bearer ${tokens.access_token}`}}).catch(error=>{
           if(error.status===400 && url.searchParams.get('pageToken')) account.scan=null;
           throw error;
         });
         for(const point of data.dataPoints||[]) {
-          const bpm=Number(point.heartRate?.beatsPerMinute),measuredAt=Date.parse(point.heartRate?.sampleTime?.physicalTime);
+          const bpm=Number(point.heartRate?.beatsPerMinute),measuredAt=Date.parse(point.heartRate?.sampleTime?.physicalTime||'');
           if(Number.isInteger(bpm)&&bpm>=1&&bpm<=300&&Number.isFinite(measuredAt)&&measuredAt>0&&measuredAt<=now&&(!newest||measuredAt>newest.measuredAt)) newest={bpm,measuredAt};
         }
         url.searchParams.set('pageToken',data.nextPageToken||'');

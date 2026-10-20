@@ -1,8 +1,11 @@
+import type { Reading, PublicSnapshot } from '../types.ts';
 const params = new URLSearchParams(location.search);
-const el = id => document.getElementById(id);
+const el = (id: string) => document.getElementById(id)!;
 const compact = params.get('layout') === 'compact';
 const feed = params.get('feed') || '';
-let reading = null, ageAtReceipt = 0, receivedAt = 0, active = true, generation = 0, next, timer, controller;
+let reading: Reading | null = null;
+let ageAtReceipt = 0, receivedAt = 0, active = true, generation = 0;
+let next: ReturnType<typeof setTimeout> | undefined, timer: ReturnType<typeof setInterval> | undefined, controller: AbortController | undefined;
 el('feed').textContent = feed;
 el('status').dataset.live = 'false';
 function tick() {
@@ -20,13 +23,13 @@ async function refresh() {
   try {
     const response = await fetch(`/cloud-reading?feed=${encodeURIComponent(feed)}`, { cache: 'no-store', signal: controller.signal });
     if (!response.ok) throw new Error('unavailable');
-    const data = await response.json();
+    const data: PublicSnapshot = await response.json();
     if (!active || current !== generation) return;
     reading = data.reading;
     if (reading && Number.isInteger(reading.bpm) && Number.isFinite(reading.measuredAt) && Number.isFinite(data.serverTime)) {
       ageAtReceipt = Math.max(0, data.serverTime - reading.measuredAt);
       receivedAt = performance.now();
-      el('bpm').textContent = reading.bpm;
+      el('bpm').textContent = String(reading.bpm);
       el('age').title = `Measured ${new Date(reading.measuredAt).toLocaleString()}`;
       el('status').textContent = data.status === 'paused' ? 'Updates paused' : 'Latest reading';
       el('status').dataset.state = data.status === 'paused' ? 'paused' : 'latest';

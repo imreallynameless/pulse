@@ -69,6 +69,7 @@ will try to make this function more like whoop. pls help :3
 
 ```sh
 npm ci
+npm run typecheck
 npm test
 npm run build:cloud
 npx wrangler deploy --dry-run

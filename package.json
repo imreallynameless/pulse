@@ -9,12 +9,20 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "node --env-file-if-exists=.env server.mjs",
-    "test": "node --test",
-    "build:cloud": "node scripts/build-cloud.mjs",
-    "deploy:cloud": "npm run build:cloud && wrangler deploy"
+    "start": "tsx --env-file-if-exists=.env server.ts",
+    "test": "node --import tsx --test tests/*.test.mjs",
+    "build:cloud": "tsx scripts/build-cloud.ts",
+    "deploy:cloud": "npm run build:cloud && wrangler deploy",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "probe": "tsx --env-file-if-exists=.env scripts/cloud-probe.ts",
+    "prestart": "npm run build:cloud"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
     "wrangler": "4.151.1"
   }
 }
