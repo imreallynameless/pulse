@@ -41,7 +41,7 @@ once yours is running, swap in your host + feed and drop this wherever you want 
 | full | omit `layout`, about 320 × 112px |
 | theme | `theme=light` or `theme=dark`; omit it to follow the viewer’s device |
 
-if your site has a theme toggle, have it update the iframe’s `theme` too. give it a bit more room on narrow layouts or with bigger text. old links with `source=cloud` still work.
+if your site has a theme toggle, send the iframe a message so it changes colour without reloading: `iframe.contentWindow.postMessage({ type: 'pulse:theme', theme: 'dark' }, 'https://YOUR-PULSE-HOST')`. send it again when the iframe loads, in case the toggle changed while it was loading. give it a bit more room on narrow layouts or with bigger text. old links with `source=cloud` still work.
 
 ## how fresh is it?
 

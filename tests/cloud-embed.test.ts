@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { transform } from 'esbuild';
+import { build, transform } from 'esbuild';
 test('cloud widget ages original measurement, retains age on failures and clears stopped sharing', async () => {
   const elements = new Map<string, { textContent: string; dataset: Record<string, string>; title?: string; ariaLabel?: string }>();
   const el = (id: string) => { if (!elements.has(id)) elements.set(id, { textContent: '', dataset: {} }); return elements.get(id)!; };
@@ -34,4 +34,34 @@ test('cloud widget ages original measurement, retains age on failures and clears
   assert.equal(el('age').textContent,'No reading shared');
   assert.equal(el('age').title,'');
   assert.equal(el('age').ariaLabel,'No reading shared');
+});
+
+test('parent theme messages preserve the reading and active polling', async () => {
+  const built = await build({ entryPoints: ['web/embed.ts'], bundle: true, write: false, format: 'iife', platform: 'browser' });
+  const elements = new Map<string, {textContent: string; dataset: Record<string, string>}>();
+  const el = (id: string) => { if (!elements.has(id)) elements.set(id, {textContent: '', dataset: {}}); return elements.get(id)!; };
+  const parent = {};
+  const dataset: Record<string, string> = {};
+  const listeners = new Map<string, (event: {source: unknown; data: unknown}) => void>();
+  let requests = 0;
+  vm.runInNewContext(built.outputFiles[0].text, {
+    document: {documentElement: {dataset}, getElementById: el},
+    location: {search: '?feed=alice&theme=light'}, URLSearchParams, AbortController,
+    window: {parent, addEventListener: (name: string, handler: (event: {source: unknown; data: unknown}) => void) => listeners.set(name, handler)},
+    performance: {now: () => 0}, setTimeout() {}, clearTimeout() {}, setInterval() {}, clearInterval() {},
+    fetch: async () => { requests++; return {ok: true, json: async () => ({status: 'latest', serverTime: 1000000, reading: {bpm: 72, measuredAt: 880000}})}; }
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  const message = listeners.get('message')!;
+  assert.equal(el('bpm').textContent, '72');
+  for (const theme of ['dark', 'light']) {
+    message({source: parent, data: {type: 'pulse:theme', theme}});
+    assert.equal(dataset.theme, theme);
+    assert.equal(el('bpm').textContent, '72');
+    assert.equal(el('status').textContent, 'Latest reading');
+    assert.equal(requests, 1);
+  }
+  message({source: {}, data: {type: 'pulse:theme', theme: 'dark'}});
+  message({source: parent, data: {type: 'pulse:theme', theme: 'invalid'}});
+  assert.equal(dataset.theme, 'light');
 });

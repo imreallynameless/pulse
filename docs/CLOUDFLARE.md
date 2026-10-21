@@ -49,7 +49,7 @@ The requested scope is `https://www.googleapis.com/auth/googlehealth.health_metr
 
 Add `&layout=compact` for an 11px header-sized line with a short measurement age (for example, `7m ago`); use an iframe about 180px wide and 44px high.
 
-Change `feed` to your configured slug. Set `theme=dark` for a dark host page, or omit it to follow the viewer's device. Update the iframe URL when the host's theme toggle changes. The widget uses transparent background, Figtree and Cabin, and includes their OFL licenses separately from the MIT source license. Allow more height for very narrow containers or enlarged text.
+Change `feed` to your configured slug. Set `theme=dark` for a dark host page, or omit it to follow the viewer's device. When the host's theme toggle changes, send `{ type: 'pulse:theme', theme: 'light' }` (or `'dark'`) using the iframe's `contentWindow.postMessage` with your Pulse origin as the target. Send the current theme on iframe load too. This preserves the reading without reloading the iframe. The widget uses transparent background, Figtree and Cabin, and includes their OFL licenses separately from the MIT source license. Allow more height for very narrow containers or enlarged text.
 
 ## Operation and privacy
 

@@ -1,8 +1,8 @@
 @font-face{font-family:Figtree;src:url('/fonts/Figtree-Variable.woff2') format('woff2');font-weight:300 900;font-display:swap}
 @font-face{font-family:Cabin;src:url('/fonts/Cabin-Variable.woff2') format('woff2');font-weight:400 700;font-display:swap}
-:root{font-family:Figtree,ui-sans-serif,system-ui,sans-serif;color-scheme:light;--text:#1d1830;--muted:#655d78;--accent:#d71920;--line:rgba(29,24,48,.15);background:transparent;color:var(--text);-webkit-font-smoothing:antialiased}
-@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--text:#f1edf6;--muted:#b3aaba;--accent:#ffd33d;--line:rgba(241,237,246,.16)}}
-:root[data-theme=dark]{color-scheme:dark;--text:#f1edf6;--muted:#b3aaba;--accent:#ffd33d;--line:rgba(241,237,246,.16)}
+:root{font-family:Figtree,ui-sans-serif,system-ui,sans-serif;color-scheme:only light;--text:#1d1830;--muted:#655d78;--accent:#d71920;--line:rgba(29,24,48,.15);background:transparent;color:var(--text);-webkit-font-smoothing:antialiased}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--text:#f1edf6;--muted:#b3aaba;--accent:#ffd33d;--line:rgba(241,237,246,.16)}}
+:root[data-theme=dark]{--text:#f1edf6;--muted:#b3aaba;--accent:#ffd33d;--line:rgba(241,237,246,.16)}
 *{box-sizing:border-box}body{margin:0}main{display:flex;align-items:center;gap:16px;padding:16px 0;max-width:480px;min-height:96px;text-transform:lowercase;line-height:1.5}
 .heart{width:40px;height:48px;flex:none;display:grid;place-items:center;color:var(--accent)}
 .heart svg{width:32px;height:32px;overflow:visible}
