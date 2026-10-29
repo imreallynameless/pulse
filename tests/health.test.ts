@@ -131,7 +131,7 @@ test('a failing health sync leaves the heart-rate reading healthy', async () => 
   assert.equal((map.get('health:steps') as MetricState).status, 'error');
 });
 
-test('connecting asks for the health scopes only when metrics are on; disconnect clears them', async () => {
+test('connecting asks for the health scopes only when metrics are on; disconnect always clears them', async () => {
   for (const [extra, expected] of [[{}, 1], [{ HEALTH_METRICS: 'steps' }, 3]] as const) {
     const { account, storage, map } = fixture(extra);
     await storage.put('session', { hash: await digest('session'), expires: Date.now() + 60000 });
@@ -140,6 +140,7 @@ test('connecting asks for the health scopes only when metrics are on; disconnect
     assert.equal(new URL(res.headers.get('Location')!).searchParams.get('scope')!.split(' ').length, expected);
     await storage.put('health:steps', { days: { '2026-10-27': 1 } });
     await account.fetch(request('/disconnect', { method: 'POST', headers }));
-    assert.equal(map.has('health:steps'), expected === 1);
+    // Cleared even with health off, in case it was switched off after syncing.
+    assert.equal(map.has('health:steps'), false);
   }
 });
