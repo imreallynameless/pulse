@@ -51,12 +51,38 @@ Add `&layout=compact` for an 11px header-sized line with a short measurement age
 
 Change `feed` to your configured slug. Set `theme=dark` for a dark host page, or omit it to follow the viewer's device. When the host's theme toggle changes, send `{ type: 'pulse:theme', theme: 'light' }` (or `'dark'`) using the iframe's `contentWindow.postMessage` with your Pulse origin as the target. Send the current theme on iframe load too. This preserves the reading without reloading the iframe. The widget uses transparent background, Figtree and Cabin, and includes their OFL licenses separately from the MIT source license. Allow more height for very narrow containers or enlarged text.
 
+## Optional health page
+
+Pulse can also publish daily summaries for a health page at `/health.json?feed=YOUR-FEED`. It is off until you list the metrics to share:
+
+```sh
+npx wrangler secret put HEALTH_METRICS
+# for example: steps,activeZoneMinutes,restingHeartRate,hrv,oxygenSaturation,respiratoryRate,skinTemperature,vo2Max,weight,sleep
+```
+
+It's a secret rather than a `wrangler.jsonc` var so forks start with heart rate only and redeploys keep your choice. Once it's set, **reconnect Google Health** on the owner page. Connecting then also asks for `googlehealth.activity_and_fitness.readonly` and `googlehealth.sleep.readonly`; allow every box Google shows. Metrics whose access was declined report `reconnect` in the feed.
+
+The cron fills one metric per minute: a year of history the first time, then the last three days hourly, so late phone syncs still land. Each metric keeps at most 365 daily values. Metrics with no data are left out of `metrics`; `status` says whether each one is `ok`, `pending`, `error` or needs a `reconnect`.
+
+```json
+{
+  "updatedAt": 1761674400000,
+  "metrics": {
+    "steps": { "unit": "steps", "days": [["2026-10-27", 8123]] },
+    "sleep": { "unit": "min", "days": [["2026-10-28", { "asleep": 431, "deep": 62, "light": 250, "rem": 90, "awake": 29 }]] }
+  },
+  "status": { "steps": "ok", "sleep": "ok" }
+}
+```
+
+Dates are the owner's local dates from Google. Sleep counts toward the morning you wake up, and weight keeps the last entry logged each day. The feed is public, sends `Access-Control-Allow-Origin: *` and is cached by browsers for five minutes. Update `web/privacy.html` to list what your deployment shares.
+
 ## Operation and privacy
 
-- A single Durable Object stores encrypted Google authorization and one latest reading, not a measurement history. Cloudflare secrets hold the encryption key and client credentials. Cloudflare remains a trusted hosting provider with access to the running service.
+- A single Durable Object stores encrypted Google authorization and one latest reading, not a heart-rate history. With the health page on, it also keeps up to 365 daily values per enabled metric. Cloudflare secrets hold the encryption key and client credentials. Cloudflare remains a trusted hosting provider with access to the running service.
 - Public responses include only status, BPM, original measurement time, and server time. Anyone who knows the feed URL can read or copy those fields. Feed names are not passwords.
 - Owner sessions expire after 24 hours. This does not stop background sharing. Enter the owner key again to manage it.
-- **Stop sharing & disconnect** removes stored tokens, the reading, and pending sign-in. It does not revoke the app in Google's account settings; you can remove Google access there separately. It cannot retract readings already seen by others.
+- **Stop sharing & disconnect** removes stored tokens, the reading, daily health values, and pending sign-in. It does not revoke the app in Google's account settings; you can remove Google access there separately. It cannot retract readings already seen by others.
 - Google apps in **Testing** generally have seven-day refresh-token expiry for this scope. Reconnect when authorization expires. Production publishing/verification is a separate Google process, not something this deployment bypasses.
 - The first fetch searches the past 24 hours. After catching up, new fetches start five minutes before the latest measurement, looking back no more than 24 hours. Each poll reads up to six pages and saves any remaining pagination progress for the next poll. Once a reading is found it is retained with its original age, including across restarts, until replaced or sharing is stopped.
 - Failures retain the previous reading and show **Updates paused**. Retry delay grows from one minute up to five minutes. A successful check resets the delay. A connection that has not checked successfully in two minutes is also marked paused. A newly connected account without data shows Waiting.
