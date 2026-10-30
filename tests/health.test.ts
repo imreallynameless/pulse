@@ -27,9 +27,19 @@ test('parsers read each data type and reject bad values', () => {
   assert.deepEqual(METRICS.vo2Max.parse({ dailyVo2Max: { date: date('2026-10-27'), vo2Max: 47.04 } }), ['2026-10-27', 47, 0]);
   const at = '2026-10-20T15:00:00Z';
   assert.deepEqual(METRICS.weight.parse({ weight: { weightGrams: 72440, sampleTime: { physicalTime: at, civilTime: { date: date('2026-10-20') } } } }), ['2026-10-20', 72.4, Date.parse(at)]);
-  const sleep = { interval: { civilEndTime: { date: date('2026-10-28') } }, metadata: {}, summary: { minutesAsleep: '431', stagesSummary: [{ type: 'DEEP', minutes: '62' }, { type: 'REM', minutes: '90' }, { type: 'ASLEEP', minutes: '5' }] } };
+  const sleep = { interval: { endTime: '2026-10-28T14:00:00Z', endUtcOffset: '-25200s' }, metadata: {}, summary: { minutesAsleep: '431', stagesSummary: [{ type: 'DEEP', minutes: '62' }, { type: 'REM', minutes: '90' }, { type: 'ASLEEP', minutes: '5' }] } };
   assert.deepEqual(METRICS.sleep.parse({ sleep }), ['2026-10-28', { asleep: 431, deep: 62, rem: 90 }, 431]);
   assert.equal(METRICS.sleep.parse({ sleep: { ...sleep, metadata: { nap: true } } }), null);
+});
+
+test('sleep reads the local wake date and stage times Google actually sends', () => {
+  const stage = (type: string, startTime: string, endTime: string) => ({ type, startTime, endTime, startUtcOffset: '-25200s', endUtcOffset: '-25200s' });
+  const interval = { startTime: '2026-10-30T02:00:00Z', startUtcOffset: '-25200s', endTime: '2026-10-30T05:30:00Z', endUtcOffset: '-25200s' };
+  const stages = [stage('AWAKE', '2026-10-30T02:00:00Z', '2026-10-30T02:10:00Z'), stage('LIGHT', '2026-10-30T02:10:00Z', '2026-10-30T04:10:00Z'), stage('DEEP', '2026-10-30T04:10:00Z', '2026-10-30T05:00:00Z'), stage('REM', '2026-10-30T05:00:00Z', '2026-10-30T05:30:00Z')];
+  // 05:30 UTC is still the evening of the 29th at UTC-7.
+  assert.deepEqual(METRICS.sleep.parse({ sleep: { interval, type: 'STAGES', stages } }), ['2026-10-29', { asleep: 200, deep: 50, light: 120, rem: 30, awake: 10 }, 200]);
+  assert.equal(METRICS.sleep.parse({ sleep: { interval: {}, stages } }), null);
+  assert.equal(METRICS.sleep.parse({ sleep: { interval, stages: [] } }), null);
 });
 
 test('merging keeps the latest weigh-in, overwrites stale days and trims past a year', () => {
@@ -60,6 +70,12 @@ test('first sync backfills a year in 90-day rollups, later syncs re-read three d
   await syncMetric('steps', first, google, now + HOUR);
   assert.equal(bodies.length, 1);
   assert.deepEqual(bodies[0].range.start.date, date('2026-10-25'));
+});
+
+test('a synced metric with nothing stored keeps backfilling', async () => {
+  const urls: URL[] = [];
+  await syncMetric('sleep', { days: {}, syncedAt: now - HOUR, status: 'ok' }, async <T,>(url: string | URL) => { urls.push(new URL(url)); return {} as T; }, now);
+  assert.equal(urls[0].searchParams.get('filter'), 'sleep.interval.civil_end_time >= "2025-10-28"');
 });
 
 test('list metrics page through results with filters where Google supports them', async () => {

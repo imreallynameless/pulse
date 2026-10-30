@@ -59,15 +59,24 @@ export const METRICS: Record<string, Metric> = {
     const day = civilDate(point.weight?.sampleTime?.civilTime?.date), kg = finite(point.weight?.weightGrams, 1000, 1000000), at = Date.parse(point.weight?.sampleTime?.physicalTime || '');
     return day && kg !== null ? [day, round(kg / 1000), Number.isFinite(at) ? at : 0] : null;
   } },
-  // Sleep counts toward the morning you wake up; naps are left out.
+  // Sleep counts toward the morning you wake up; naps are left out. Google may send
+  // only stage times, so totals fall back to adding those up.
   sleep: { dataType: 'sleep', unit: 'min', method: 'reconcile', filter: since => `sleep.interval.civil_end_time >= "${since}"`, parse: point => {
-    const sleep = point.sleep, day = civilDate(sleep?.interval?.civilEndTime?.date), asleep = finite(sleep?.summary?.minutesAsleep, 1, 1440);
-    if (!day || asleep === null || sleep.metadata?.nap) return null;
-    const night: SleepNight = { asleep };
-    for (const stage of sleep.summary.stagesSummary || []) {
-      const name = String(stage.type || '').toLowerCase(), minutes = finite(stage.minutes, 0, 1440);
-      if (minutes !== null && (name === 'deep' || name === 'light' || name === 'rem' || name === 'awake')) night[name] = minutes;
+    const sleep = point.sleep, interval = sleep?.interval, ended = Date.parse(interval?.endTime || '');
+    if (!Number.isFinite(ended) || sleep.metadata?.nap) return null;
+    const day = isoDate(ended + (parseInt(interval.endUtcOffset) || 0) * 1000), totals: Record<string, number> = {};
+    for (const stage of sleep.stages || []) {
+      const name = String(stage.type || '').toLowerCase(), minutes = (Date.parse(stage.endTime) - Date.parse(stage.startTime)) / 60000;
+      if (minutes > 0) totals[name] = (totals[name] || 0) + minutes;
     }
+    for (const stage of sleep.summary?.stagesSummary || []) {
+      const minutes = finite(stage.minutes, 0, 1440);
+      if (minutes !== null) totals[String(stage.type || '').toLowerCase()] = minutes;
+    }
+    const asleep = finite(sleep.summary?.minutesAsleep ?? Object.entries(totals).reduce((sum, [name, minutes]) => name === 'awake' || name === 'restless' ? sum : sum + minutes, 0), 1, 1440);
+    if (asleep === null) return null;
+    const night: SleepNight = { asleep: Math.round(asleep) };
+    for (const name of ['deep', 'light', 'rem', 'awake'] as const) if (name in totals) night[name] = Math.round(totals[name]);
     return [day, night, asleep];
   } },
 };
@@ -124,8 +133,8 @@ export function mergeDays(stored: Record<string, HealthValue>, parsed: Parsed[],
 
 export async function syncMetric(key: string, state: MetricState | undefined, google: Google, now: number): Promise<MetricState> {
   const metric = METRICS[key], today = isoDate(now);
-  // Backfill a year the first time, then re-read three days so late phone syncs land.
-  const since = isoDate(now - (state?.syncedAt ? 3 : KEEP_DAYS) * DAY);
+  // Backfill a year until something is stored, then re-read three days so late phone syncs land.
+  const since = isoDate(now - (Object.keys(state?.days || {}).length ? 3 : KEEP_DAYS) * DAY);
   try {
     const parsed = (await fetchPoints(metric, since, today, google)).map(point => metric.parse(point));
     return { days: mergeDays(state?.days || {}, parsed, since, now), syncedAt: now, status: 'ok', failures: 0 };
