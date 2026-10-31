@@ -42,6 +42,14 @@ test('sleep reads the local wake date and stage times Google actually sends', ()
   assert.equal(METRICS.sleep.parse({ sleep: { interval, stages: [] } }), null);
 });
 
+test('nights over twelve hours are dropped when read and hidden if already stored', () => {
+  const interval = { endTime: '2026-10-28T14:00:00Z', endUtcOffset: '-25200s' };
+  assert.equal(METRICS.sleep.parse({ sleep: { interval, summary: { minutesAsleep: '721' } } }), null);
+  assert.deepEqual(METRICS.sleep.parse({ sleep: { interval, summary: { minutesAsleep: '720' } } }), ['2026-10-28', { asleep: 720 }, 720]);
+  const days = { '2026-06-21': { asleep: 1092 }, '2026-10-28': { asleep: 431 } };
+  assert.deepEqual(publicHealth(['sleep'], { sleep: { days } }).metrics.sleep.days, [['2026-10-28', { asleep: 431 }]]);
+});
+
 test('merging keeps the latest weigh-in, overwrites stale days and trims past a year', () => {
   const days = mergeDays({ '2025-01-01': 70, '2026-10-26': 5000 }, [['2026-10-26', 9000, 0], ['2026-10-20', 72.1, 1], ['2026-10-20', 72.4, 2], ['2026-10-20', 71.9, 0], null], '2026-10-01', now);
   assert.deepEqual(days, { '2026-10-26': 9000, '2026-10-20': 72.4 });

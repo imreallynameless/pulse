@@ -15,6 +15,8 @@ export const HOUR = 3600000;
 const DAY = 86400000;
 const KEEP_DAYS = 365;
 const MAX_PAGES = 20;
+// Longer "nights" are bad records, and would otherwise outrank the real night.
+const MAX_SLEEP_MINUTES = 720;
 const API = 'https://health.googleapis.com/v4/users/me/dataTypes/';
 export const scopes = ['health_metrics_and_measurements', 'activity_and_fitness', 'sleep'].map(name => `https://www.googleapis.com/auth/googlehealth.${name}.readonly`);
 
@@ -73,7 +75,7 @@ export const METRICS: Record<string, Metric> = {
       const minutes = finite(stage.minutes, 0, 1440);
       if (minutes !== null) totals[String(stage.type || '').toLowerCase()] = minutes;
     }
-    const asleep = finite(sleep.summary?.minutesAsleep ?? Object.entries(totals).reduce((sum, [name, minutes]) => name === 'awake' || name === 'restless' ? sum : sum + minutes, 0), 1, 1440);
+    const asleep = finite(sleep.summary?.minutesAsleep ?? Object.entries(totals).reduce((sum, [name, minutes]) => name === 'awake' || name === 'restless' ? sum : sum + minutes, 0), 1, MAX_SLEEP_MINUTES);
     if (asleep === null) return null;
     const night: SleepNight = { asleep: Math.round(asleep) };
     for (const name of ['deep', 'light', 'rem', 'awake'] as const) if (name in totals) night[name] = Math.round(totals[name]);
@@ -153,7 +155,7 @@ export function publicHealth(keys: string[], states: Record<string, MetricState 
     const state = states[key];
     status[key] = state?.status || 'pending';
     updatedAt = Math.max(updatedAt, state?.syncedAt || 0);
-    const days = Object.entries(state?.days || {}).sort(([a], [b]) => a.localeCompare(b));
+    const days = Object.entries(state?.days || {}).filter(([, value]) => typeof value === 'number' || value.asleep <= MAX_SLEEP_MINUTES).sort(([a], [b]) => a.localeCompare(b));
     if (days.length) metrics[key] = { unit: METRICS[key].unit, days };
   }
   return { updatedAt: updatedAt || null, metrics, status };
