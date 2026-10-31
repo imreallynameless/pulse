@@ -1,20 +1,22 @@
 import type { Reading, Tokens, TokenResponse, HeartRatePage } from '../types.ts';
 import type { Sealed } from './security.ts';
-interface Env { ADMIN_KEY: string; TOKEN_KEY: string; GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_SECRET: string; FEED: string; ASSETS: Fetcher; ACCOUNT: DurableObjectNamespace }
+interface Env { ADMIN_KEY: string; TOKEN_KEY: string; GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_SECRET: string; FEED: string; HEALTH_METRICS?: string; ASSETS: Fetcher; ACCOUNT: DurableObjectNamespace }
 interface Account { tokens: Sealed; latest?: Reading | null; checkedAt?: number | null; error?: boolean; failures?: number; nextCheck?: number; scan?: {since:number; until:number; pageToken:string} | null }
 interface Pending { state:string; verifier:string; browser:string; expires:number; origin:string }
 interface Session { hash:string; expires:number }
 import { random, digest, seal, unseal } from './security.ts';
+import { METRICS, configuredMetrics, dueMetric, publicHealth, scopes as healthScopes, syncMetric, type MetricState } from './health.ts';
 const scope = 'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly';
-const routes = new Set(['/','/login','/connect','/callback','/disconnect','/cloud-reading']);
+const routes = new Set(['/','/login','/connect','/callback','/disconnect','/cloud-reading','/health.json']);
 const cookie = (name: string, value: string, seconds: number, sameSite='Strict') => `${name}=${value}; HttpOnly; Secure; SameSite=${sameSite}; Path=/; Max-Age=${seconds}`;
 function cookies(request: Request) { return Object.fromEntries((request.headers.get('Cookie')||'').split(';').map(x=>x.trim().split('='))); }
 function response(body: BodyInit | null, status=200, type='text/plain', extra: Record<string,string>={}) {
   return new Response(body,{status,headers:{'Content-Type':`${type}; charset=utf-8`,'Cache-Control':'no-store','Referrer-Policy':'same-origin','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://accounts.google.com; frame-ancestors 'none'; base-uri 'none'",...extra}});
 }
 const redirect = (url: string, extra: Record<string,string>={}) => response('',303,'text/plain',{Location:url,...extra});
-function page(authorized: boolean, connected: boolean) {
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pulse connection</title><style>body{font:16px system-ui;background:#f3efff;color:#1d1830;max-width:32rem;margin:12vh auto;padding:24px}h1{font-weight:500}p{line-height:1.6;color:#655d78}button,input{font:inherit;padding:12px;border:1px solid #655d78;border-radius:6px}button{cursor:pointer;background:#1d1830;color:#f3efff}input{max-width:90%;margin:0 0 16px}a{color:inherit}</style><h1>pulse</h1>${!authorized ? '<p>Enter your private owner key to manage this feed.</p><form method="post" action="/login"><input name="key" type="password" autocomplete="current-password" required aria-label="Owner key"><br><button>unlock</button></form>' : `<p>${connected?'Google is connected. Your latest measured heart rate is shared publicly.':'Connect Google Health to publish your latest measured heart rate and its age.'}</p><form method="post" action="/connect"><button>${connected?'reconnect Google Health':'connect Google Health'}</button></form>${connected?'<p><a href="/embed.html?feed=FEED&source=cloud">preview widget</a></p><form method="post" action="/disconnect"><button>stop sharing &amp; disconnect</button></form>':''}<p>This is the latest synced measurement, not a live stream. Google apps in Testing require reconnecting after seven days.</p>`}</html>`;
+function page(authorized: boolean, connected: boolean, metrics: string[]) {
+  const extra = metrics.length ? `<p>${connected?'Also shared publicly':'Connecting also publishes'} as daily values: ${metrics.join(', ')}.</p>` : '';
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pulse connection</title><style>body{font:16px system-ui;background:#f3efff;color:#1d1830;max-width:32rem;margin:12vh auto;padding:24px}h1{font-weight:500}p{line-height:1.6;color:#655d78}button,input{font:inherit;padding:12px;border:1px solid #655d78;border-radius:6px}button{cursor:pointer;background:#1d1830;color:#f3efff}input{max-width:90%;margin:0 0 16px}a{color:inherit}</style><h1>pulse</h1>${!authorized ? '<p>Enter your private owner key to manage this feed.</p><form method="post" action="/login"><input name="key" type="password" autocomplete="current-password" required aria-label="Owner key"><br><button>unlock</button></form>' : `<p>${connected?'Google is connected. Your latest measured heart rate is shared publicly.':'Connect Google Health to publish your latest measured heart rate and its age.'}</p>${extra}<form method="post" action="/connect"><button>${connected?'reconnect Google Health':'connect Google Health'}</button></form>${connected?'<p><a href="/embed.html?feed=FEED&source=cloud">preview widget</a></p><form method="post" action="/disconnect"><button>stop sharing &amp; disconnect</button></form>':''}<p>This is the latest synced measurement, not a live stream. Google apps in Testing require reconnecting after seven days.</p>`}</html>`;
 }
 export default {
   async fetch(request: Request, env: Env) {
@@ -60,7 +62,7 @@ export class PulseAccount {
       } catch { return response('Unable to read login request',408); }
       finally { if(timeout !== undefined) clearTimeout(timeout); if(reader) void reader.cancel().catch(()=>{}); }
     }
-    if(request.method==='GET' && new URL(request.url).pathname==='/cloud-reading') return this.handle(request);
+    if(request.method==='GET' && ['/cloud-reading','/health.json'].includes(new URL(request.url).pathname)) return this.handle(request);
     // ponytail: one owner, one mutation queue; shard by owner only for a multi-account service.
     const result=this.queue.then(()=>this.handle(request));
     this.queue=result.catch(()=>{});
@@ -73,7 +75,14 @@ export class PulseAccount {
   }
   async handle(request: Request) {
     const url=new URL(request.url), path=url.pathname;
-    if (path==='/_poll') { await this.poll(); return response(null,204); }
+    if (path==='/_poll') { await this.poll(); await this.syncHealth(); return response(null,204); }
+    if (request.method==='GET' && path==='/health.json') {
+      const metrics=configuredMetrics(this.env.HEALTH_METRICS);
+      if(url.searchParams.get('feed')!==this.env.FEED || !metrics.length) return response('Not found',404);
+      const body=(await this.storage.get<Account>('account'))?.tokens ? publicHealth(metrics,await this.healthStates(metrics)) : publicHealth([],{});
+      // Public by design: the owner chose these metrics, and any site may chart them.
+      return response(JSON.stringify(body),200,'application/json',{'Cache-Control':'public, max-age=300','Access-Control-Allow-Origin':'*'});
+    }
     if (request.method==='GET' && path==='/cloud-reading') {
       if(url.searchParams.get('feed')!==this.env.FEED) return response('Not found',404);
       const account=await this.storage.get<Account>('account'), now=Date.now();
@@ -81,7 +90,7 @@ export class PulseAccount {
       const valid=latest && Number.isInteger(latest.bpm) && latest.bpm>=1 && latest.bpm<=300 && Number.isFinite(latest.measuredAt) && latest.measuredAt>0 && latest.measuredAt<=now;
       return response(JSON.stringify({status:!valid?'waiting':account.error || !account.checkedAt || now-account.checkedAt>120000?'paused':'latest',reading:valid?{bpm:latest.bpm,measuredAt:latest.measuredAt}:null,serverTime:now}),200,'application/json');
     }
-    if(request.method==='GET' && path==='/') return response(page(await this.authorized(request),Boolean((await this.storage.get<Account>('account'))?.tokens)).replace('feed=FEED',`feed=${encodeURIComponent(this.env.FEED)}`),200,'text/html');
+    if(request.method==='GET' && path==='/') return response(page(await this.authorized(request),Boolean((await this.storage.get<Account>('account'))?.tokens),configuredMetrics(this.env.HEALTH_METRICS)).replace('feed=FEED',`feed=${encodeURIComponent(this.env.FEED)}`),200,'text/html');
     if(request.method==='POST') {
       if(request.headers.get('Origin')!==url.origin) return response('Invalid origin',403);
       if(path==='/login') {
@@ -98,11 +107,11 @@ export class PulseAccount {
         const pending={state:random(),verifier:random(),browser:random(),expires:Date.now()+600000,origin:url.origin};
         await this.storage.put('pending',pending);
         const auth=new URL('https://accounts.google.com/o/oauth2/v2/auth');
-        auth.search=new URLSearchParams({client_id:this.env.GOOGLE_CLIENT_ID,redirect_uri:url.origin+'/callback',response_type:'code',scope,state:pending.state,access_type:'offline',prompt:'consent',code_challenge:await digest(pending.verifier),code_challenge_method:'S256'}).toString();
+        auth.search=new URLSearchParams({client_id:this.env.GOOGLE_CLIENT_ID,redirect_uri:url.origin+'/callback',response_type:'code',scope:configuredMetrics(this.env.HEALTH_METRICS).length?[...new Set([scope,...healthScopes])].join(' '):scope,state:pending.state,access_type:'offline',prompt:'consent',code_challenge:await digest(pending.verifier),code_challenge_method:'S256'}).toString();
         return redirect(auth.href,{'Set-Cookie':cookie('pulse_auth',pending.browser,600,'Lax')});
       }
       if(path==='/disconnect') {
-        await this.storage.delete('account'); await this.storage.delete('pending');
+        await this.storage.delete('account'); await this.storage.delete('pending'); await this.clearHealth();
         return redirect('/');
       }
     }
@@ -115,6 +124,8 @@ export class PulseAccount {
       if(!tokens.refresh_token) return response('Google did not grant background access. Please reconnect.',400);
       await this.google('https://health.googleapis.com/v4/users/me/identity',{headers:{Authorization:`Bearer ${tokens.access_token}`}});
       await this.storage.put('account',{tokens:await seal(tokens,this.env.TOKEN_KEY),latest:null,checkedAt:null,error:false});
+      // New grants can add scopes, so every metric backfills again.
+      await this.clearHealth();
       await this.poll();
       return redirect('/',{'Set-Cookie':cookie('pulse_auth','',0,'Lax')});
     }
@@ -134,11 +145,7 @@ export class PulseAccount {
     const account=await this.storage.get<Account>('account');
     if(!account?.tokens || ((account.nextCheck||0)>Date.now() && (account.nextCheck||0)<=Date.now()+300000)) return;
     try {
-      let tokens=await unseal<Tokens>(account.tokens,this.env.TOKEN_KEY);
-      if(tokens.expiresAt<Date.now()+60000) {
-        tokens={...tokens,...await this.tokenRequest({grant_type:'refresh_token',refresh_token:tokens.refresh_token!})};
-        account.tokens=await seal(tokens,this.env.TOKEN_KEY);
-      }
+      const tokens=await this.accessTokens(account);
       const now=Date.now();
       const scan=account.scan && now-account.scan.until<86400000 ? account.scan : {since:Math.max(now-86400000,(account.latest?.measuredAt||0)-300000),until:now,pageToken:''};
       const url=new URL('https://health.googleapis.com/v4/users/me/dataTypes/heart-rate/dataPoints');
@@ -167,5 +174,33 @@ export class PulseAccount {
       Object.assign(account,{error:true,failures,nextCheck:Date.now()+Math.min(300000,60000*2**(failures-1))});
     }
     await this.storage.put('account',account);
+  }
+  // Refreshes in place; the caller saves the account, keeping the rotated tokens.
+  async accessTokens(account: Account) {
+    let tokens=await unseal<Tokens>(account.tokens,this.env.TOKEN_KEY);
+    if(tokens.expiresAt<Date.now()+60000) {
+      tokens={...tokens,...await this.tokenRequest({grant_type:'refresh_token',refresh_token:tokens.refresh_token!})};
+      account.tokens=await seal(tokens,this.env.TOKEN_KEY);
+    }
+    return tokens;
+  }
+  async healthStates(keys: string[]) {
+    return Object.fromEntries(await Promise.all(keys.map(async key=>[key,await this.storage.get<MetricState>(`health:${key}`)] as const)));
+  }
+  async clearHealth() {
+    // Every known metric, so values from a since-removed metric are cleared too.
+    for(const key of Object.keys(METRICS)) await this.storage.delete(`health:${key}`);
+  }
+  // Runs after the heart-rate poll in the same queue. Its failures stay in the
+  // metric's own state, so the heart-rate widget never shows them as paused.
+  async syncHealth() {
+    const keys=configuredMetrics(this.env.HEALTH_METRICS), account=await this.storage.get<Account>('account');
+    if(!keys.length || !account?.tokens) return;
+    const now=Date.now(), states=await this.healthStates(keys), key=dueMetric(keys,states,now);
+    if(!key) return;
+    let tokens: Tokens;
+    try { tokens=await this.accessTokens(account); await this.storage.put('account',account); } catch { return; }
+    const google=<T,>(url: string | URL, options: RequestInit={})=>this.google<T>(url,{...options,headers:{...options.headers,Authorization:`Bearer ${tokens.access_token}`}});
+    await this.storage.put(`health:${key}`,await syncMetric(key,states[key],google,now));
   }
 }
