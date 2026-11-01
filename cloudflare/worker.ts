@@ -5,7 +5,7 @@ interface Account { tokens: Sealed; latest?: Reading | null; checkedAt?: number 
 interface Pending { state:string; verifier:string; browser:string; expires:number; origin:string }
 interface Session { hash:string; expires:number }
 import { random, digest, seal, unseal } from './security.ts';
-import { METRICS, configuredMetrics, dueMetric, publicHealth, scopes as healthScopes, syncMetric, type MetricState } from './health.ts';
+import { METRICS, configuredMetrics, dueMetric, publicHealth, scopesFor, syncMetric, type MetricState } from './health.ts';
 const scope = 'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly';
 const routes = new Set(['/','/login','/connect','/callback','/disconnect','/cloud-reading','/health.json']);
 const cookie = (name: string, value: string, seconds: number, sameSite='Strict') => `${name}=${value}; HttpOnly; Secure; SameSite=${sameSite}; Path=/; Max-Age=${seconds}`;
@@ -107,7 +107,7 @@ export class PulseAccount {
         const pending={state:random(),verifier:random(),browser:random(),expires:Date.now()+600000,origin:url.origin};
         await this.storage.put('pending',pending);
         const auth=new URL('https://accounts.google.com/o/oauth2/v2/auth');
-        auth.search=new URLSearchParams({client_id:this.env.GOOGLE_CLIENT_ID,redirect_uri:url.origin+'/callback',response_type:'code',scope:configuredMetrics(this.env.HEALTH_METRICS).length?[...new Set([scope,...healthScopes])].join(' '):scope,state:pending.state,access_type:'offline',prompt:'consent',code_challenge:await digest(pending.verifier),code_challenge_method:'S256'}).toString();
+        auth.search=new URLSearchParams({client_id:this.env.GOOGLE_CLIENT_ID,redirect_uri:url.origin+'/callback',response_type:'code',scope:[...new Set([scope,...scopesFor(configuredMetrics(this.env.HEALTH_METRICS))])].join(' '),state:pending.state,access_type:'offline',prompt:'consent',code_challenge:await digest(pending.verifier),code_challenge_method:'S256'}).toString();
         return redirect(auth.href,{'Set-Cookie':cookie('pulse_auth',pending.browser,600,'Lax')});
       }
       if(path==='/disconnect') {
@@ -124,8 +124,8 @@ export class PulseAccount {
       if(!tokens.refresh_token) return response('Google did not grant background access. Please reconnect.',400);
       await this.google('https://health.googleapis.com/v4/users/me/identity',{headers:{Authorization:`Bearer ${tokens.access_token}`}});
       await this.storage.put('account',{tokens:await seal(tokens,this.env.TOKEN_KEY),latest:null,checkedAt:null,error:false});
-      // New grants can add scopes, so every metric backfills again.
-      await this.clearHealth();
+      // New grants can add scopes, so every metric syncs again. Charts keep their history meanwhile.
+      for(const key of Object.keys(METRICS)) { const state=await this.storage.get<MetricState>(`health:${key}`); if(state) await this.storage.put(`health:${key}`,{days:state.days}); }
       await this.poll();
       return redirect('/',{'Set-Cookie':cookie('pulse_auth','',0,'Lax')});
     }
@@ -198,9 +198,15 @@ export class PulseAccount {
     if(!keys.length || !account?.tokens) return;
     const now=Date.now(), states=await this.healthStates(keys), key=dueMetric(keys,states,now);
     if(!key) return;
-    let tokens: Tokens;
-    try { tokens=await this.accessTokens(account); await this.storage.put('account',account); } catch { return; }
-    const google=<T,>(url: string | URL, options: RequestInit={})=>this.google<T>(url,{...options,headers:{...options.headers,Authorization:`Bearer ${tokens.access_token}`}});
+    let tokens: Tokens | undefined;
+    const google=async <T,>(url: string | URL, options: RequestInit={})=>{
+      if(!tokens) {
+        // Inside the call, so a failed refresh lands in the metric's state. Google answers 400 once a login has expired.
+        try { tokens=await this.accessTokens(account); await this.storage.put('account',account); }
+        catch(error) { throw (error as {status?:number}).status===400 ? Object.assign(new Error('Reconnect Google'),{status:403}) : error; }
+      }
+      return this.google<T>(url,{...options,headers:{...options.headers,Authorization:`Bearer ${tokens.access_token}`}});
+    };
     await this.storage.put(`health:${key}`,await syncMetric(key,states[key],google,now));
   }
 }

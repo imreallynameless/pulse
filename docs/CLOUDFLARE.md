@@ -60,9 +60,9 @@ npx wrangler secret put HEALTH_METRICS
 # for example: steps,activeZoneMinutes,restingHeartRate,hrv,oxygenSaturation,respiratoryRate,skinTemperature,vo2Max,weight,sleep
 ```
 
-It's a secret rather than a `wrangler.jsonc` var so forks start with heart rate only and redeploys keep your choice. Once it's set, **reconnect Google Health** on the owner page. Connecting then also asks for `googlehealth.activity_and_fitness.readonly` and `googlehealth.sleep.readonly`; allow every box Google shows. Metrics whose access was declined report `reconnect` in the feed.
+It's a secret rather than a `wrangler.jsonc` var so forks start with heart rate only and redeploys keep your choice. Once it's set, **reconnect Google Health** on the owner page. Connecting then also asks for the scopes your metrics need: `googlehealth.activity_and_fitness.readonly` for steps, active zone minutes and VO2 max, and `googlehealth.sleep.readonly` for sleep. Allow every box Google shows. Metrics whose access was declined, or whose Google login has expired, report `reconnect` in the feed.
 
-The cron fills one metric per minute: a year of history the first time, then the last three days hourly, so late phone syncs still land. Each metric keeps at most 365 daily values. Metrics with no data are left out of `metrics`; `status` says whether each one is `ok`, `pending`, `error` or needs a `reconnect`.
+The cron fills one metric per minute: a year of history the first time, then hourly from three days before the newest stored day, so late phone syncs still land. Reconnecting keeps stored history, so connect a different Google account by disconnecting first. Each metric keeps at most 365 daily values. Metrics with no data are left out of `metrics`; `status` says whether each one is `ok`, `pending`, `error` or needs a `reconnect`.
 
 ```json
 {

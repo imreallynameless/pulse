@@ -9,7 +9,7 @@ export type Google = <T>(url: string | URL, options?: RequestInit) => Promise<T>
 type Parsed = [day: string, value: HealthValue, order: number] | null;
 type GoogleDate = { year?: number; month?: number; day?: number };
 type Point = Record<string, any>;
-interface Metric { dataType: string; unit: string; method: 'rollup' | 'list' | 'reconcile'; filter?: (since: string) => string; parse: (point: Point) => Parsed }
+interface Metric { dataType: string; unit: string; scope: string; method: 'rollup' | 'list' | 'reconcile'; filter?: (since: string) => string; parse: (point: Point) => Parsed }
 
 export const HOUR = 3600000;
 const DAY = 86400000;
@@ -18,7 +18,7 @@ const MAX_PAGES = 20;
 // Longer "nights" are bad records, and would otherwise outrank the real night.
 const MAX_SLEEP_MINUTES = 720;
 const API = 'https://health.googleapis.com/v4/users/me/dataTypes/';
-export const scopes = ['health_metrics_and_measurements', 'activity_and_fitness', 'sleep'].map(name => `https://www.googleapis.com/auth/googlehealth.${name}.readonly`);
+const ACTIVITY = 'activity_and_fitness', MEASUREMENTS = 'health_metrics_and_measurements';
 
 const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 export function civilDate(date: GoogleDate | undefined) {
@@ -37,33 +37,33 @@ function daily(field: string, read: (value: Point) => number | null): (point: Po
 }
 
 export const METRICS: Record<string, Metric> = {
-  steps: { dataType: 'steps', unit: 'steps', method: 'rollup', parse: point => {
+  steps: { dataType: 'steps', unit: 'steps', scope: ACTIVITY, method: 'rollup', parse: point => {
     const day = civilDate(point.civilStartTime?.date), value = finite(point.steps?.countSum, 0, 1000000);
     return day && value !== null ? [day, value, 0] : null;
   } },
-  activeZoneMinutes: { dataType: 'active-zone-minutes', unit: 'min', method: 'rollup', parse: point => {
+  activeZoneMinutes: { dataType: 'active-zone-minutes', unit: 'min', scope: ACTIVITY, method: 'rollup', parse: point => {
     const day = civilDate(point.civilStartTime?.date), azm = point.activeZoneMinutes;
     if (!day || !azm) return null;
     const value = ['sumInFatBurnHeartZone', 'sumInCardioHeartZone', 'sumInPeakHeartZone'].reduce((sum, zone) => sum + (finite(azm[zone], 0, 1440) ?? 0), 0);
     return [day, value, 0];
   } },
-  restingHeartRate: { dataType: 'daily-resting-heart-rate', unit: 'bpm', method: 'list', parse: daily('dailyRestingHeartRate', v => finite(v.beatsPerMinute, 20, 250)) },
-  hrv: { dataType: 'daily-heart-rate-variability', unit: 'ms', method: 'list', parse: daily('dailyHeartRateVariability', v => { const n = finite(v.averageHeartRateVariabilityMilliseconds, 1, 500); return n === null ? null : round(n); }) },
-  oxygenSaturation: { dataType: 'daily-oxygen-saturation', unit: '%', method: 'list', parse: daily('dailyOxygenSaturation', v => { const n = finite(v.averagePercentage, 50, 100); return n === null ? null : round(n); }) },
-  respiratoryRate: { dataType: 'daily-respiratory-rate', unit: 'br/min', method: 'list', parse: daily('dailyRespiratoryRate', v => { const n = finite(v.breathsPerMinute, 1, 60); return n === null ? null : round(n); }) },
+  restingHeartRate: { dataType: 'daily-resting-heart-rate', unit: 'bpm', scope: MEASUREMENTS, method: 'list', parse: daily('dailyRestingHeartRate', v => finite(v.beatsPerMinute, 20, 250)) },
+  hrv: { dataType: 'daily-heart-rate-variability', unit: 'ms', scope: MEASUREMENTS, method: 'list', parse: daily('dailyHeartRateVariability', v => { const n = finite(v.averageHeartRateVariabilityMilliseconds, 1, 500); return n === null ? null : round(n); }) },
+  oxygenSaturation: { dataType: 'daily-oxygen-saturation', unit: '%', scope: MEASUREMENTS, method: 'list', parse: daily('dailyOxygenSaturation', v => { const n = finite(v.averagePercentage, 50, 100); return n === null ? null : round(n); }) },
+  respiratoryRate: { dataType: 'daily-respiratory-rate', unit: 'br/min', scope: MEASUREMENTS, method: 'list', parse: daily('dailyRespiratoryRate', v => { const n = finite(v.breathsPerMinute, 1, 60); return n === null ? null : round(n); }) },
   // Fitbit shows skin temperature as the change from your own baseline, not a raw reading.
-  skinTemperature: { dataType: 'daily-sleep-temperature-derivations', unit: '°C', method: 'list', parse: daily('dailySleepTemperatureDerivations', v => {
+  skinTemperature: { dataType: 'daily-sleep-temperature-derivations', unit: '°C', scope: MEASUREMENTS, method: 'list', parse: daily('dailySleepTemperatureDerivations', v => {
     const nightly = finite(v.nightlyTemperatureCelsius, 20, 45), baseline = finite(v.baselineTemperatureCelsius, 20, 45);
     return nightly === null || baseline === null ? null : round(nightly - baseline, 2);
   }) },
-  vo2Max: { dataType: 'daily-vo2-max', unit: 'ml/kg/min', method: 'list', parse: daily('dailyVo2Max', v => { const n = finite(v.vo2Max, 5, 100); return n === null ? null : round(n); }) },
-  weight: { dataType: 'weight', unit: 'kg', method: 'list', filter: since => `weight.sample_time.physical_time >= "${since}T00:00:00Z"`, parse: point => {
+  vo2Max: { dataType: 'daily-vo2-max', unit: 'ml/kg/min', scope: ACTIVITY, method: 'list', parse: daily('dailyVo2Max', v => { const n = finite(v.vo2Max, 5, 100); return n === null ? null : round(n); }) },
+  weight: { dataType: 'weight', unit: 'kg', scope: MEASUREMENTS, method: 'list', filter: since => `weight.sample_time.physical_time >= "${since}T00:00:00Z"`, parse: point => {
     const day = civilDate(point.weight?.sampleTime?.civilTime?.date), kg = finite(point.weight?.weightGrams, 1000, 1000000), at = Date.parse(point.weight?.sampleTime?.physicalTime || '');
     return day && kg !== null ? [day, round(kg / 1000), Number.isFinite(at) ? at : 0] : null;
   } },
   // Sleep counts toward the morning you wake up; naps are left out. Google may send
   // only stage times, so totals fall back to adding those up.
-  sleep: { dataType: 'sleep', unit: 'min', method: 'reconcile', filter: since => `sleep.interval.civil_end_time >= "${since}"`, parse: point => {
+  sleep: { dataType: 'sleep', unit: 'min', scope: 'sleep', method: 'reconcile', filter: since => `sleep.interval.civil_end_time >= "${since}"`, parse: point => {
     const sleep = point.sleep, interval = sleep?.interval, ended = Date.parse(interval?.endTime || '');
     if (!Number.isFinite(ended) || sleep.metadata?.nap) return null;
     const day = isoDate(ended + (parseInt(interval.endUtcOffset) || 0) * 1000), totals: Record<string, number> = {};
@@ -82,6 +82,8 @@ export const METRICS: Record<string, Metric> = {
     return [day, night, asleep];
   } },
 };
+
+export const scopesFor = (keys: string[]) => keys.map(key => `https://www.googleapis.com/auth/googlehealth.${METRICS[key].scope}.readonly`);
 
 export function configuredMetrics(value: string | undefined) {
   return [...new Set((value || '').split(',').map(key => key.trim()).filter(key => Object.hasOwn(METRICS, key)))];
@@ -126,7 +128,7 @@ export function mergeDays(stored: Record<string, HealthValue>, parsed: Parsed[],
     if (!entry) continue;
     const [day, value, rank] = entry;
     if (day < since || day < cutoff) continue;
-    if (day in order && order[day] >= rank) continue;
+    if (day in order && order[day] > rank) continue;
     order[day] = rank; days[day] = value;
   }
   for (const day of Object.keys(days)) if (day < cutoff) delete days[day];
@@ -135,8 +137,10 @@ export function mergeDays(stored: Record<string, HealthValue>, parsed: Parsed[],
 
 export async function syncMetric(key: string, state: MetricState | undefined, google: Google, now: number): Promise<MetricState> {
   const metric = METRICS[key], today = isoDate(now);
-  // Backfill a year until something is stored, then re-read three days so late phone syncs land.
-  const since = isoDate(now - (Object.keys(state?.days || {}).length ? 3 : KEEP_DAYS) * DAY);
+  // Backfill a year until something is stored, then re-read three days before the
+  // newest stored day, so days synced late or after a long gap still land.
+  const newest = Object.keys(state?.days || {}).sort().at(-1);
+  const since = isoDate(newest ? Math.min(now, Date.parse(newest)) - 3 * DAY : now - KEEP_DAYS * DAY);
   try {
     const parsed = (await fetchPoints(metric, since, today, google)).map(point => metric.parse(point));
     return { days: mergeDays(state?.days || {}, parsed, since, now), syncedAt: now, status: 'ok', failures: 0 };

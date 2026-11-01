@@ -77,7 +77,17 @@ test('first sync backfills a year in 90-day rollups, later syncs re-read three d
   bodies.length = 0;
   await syncMetric('steps', first, google, now + HOUR);
   assert.equal(bodies.length, 1);
-  assert.deepEqual(bodies[0].range.start.date, date('2026-10-25'));
+  assert.deepEqual(bodies[0].range.start.date, date('2026-10-24'));
+});
+
+test('a long gap re-reads from the newest stored day', async () => {
+  const urls: URL[] = [];
+  await syncMetric('weight', { days: { '2026-10-10': 70 }, syncedAt: now - HOUR }, async <T,>(url: string | URL) => { urls.push(new URL(url)); return {} as T; }, now);
+  assert.equal(urls[0].searchParams.get('filter'), 'weight.sample_time.physical_time >= "2026-10-07T00:00:00Z"');
+});
+
+test('the last source wins for a daily metric', () => {
+  assert.deepEqual(mergeDays({}, [['2026-10-26', 60, 0], ['2026-10-26', 70, 0]], '2026-10-01', now), { '2026-10-26': 70 });
 });
 
 test('a synced metric with nothing stored keeps backfilling', async () => {
@@ -155,8 +165,34 @@ test('a failing health sync leaves the heart-rate reading healthy', async () => 
   assert.equal((map.get('health:steps') as MetricState).status, 'error');
 });
 
-test('connecting asks for the health scopes only when metrics are on; disconnect always clears them', async () => {
-  for (const [extra, expected] of [[{}, 1], [{ HEALTH_METRICS: 'steps' }, 3]] as const) {
+test('an expired Google login is reported on the metric and backs off', async () => {
+  const { account, storage, map } = fixture({ HEALTH_METRICS: 'steps' });
+  await storage.put('account', { tokens: await seal({ refresh_token: 'refresh', access_token: 'old', expiresAt: 0 }, baseEnv.TOKEN_KEY) });
+  const original = globalThis.fetch;
+  let refreshes = 0;
+  globalThis.fetch = async url => { if (String(url).includes('oauth2')) refreshes++; return new Response('invalid_grant', { status: 400 }); };
+  try {
+    await account.fetch(request('/_poll'));
+    await account.syncHealth();
+  } finally { globalThis.fetch = original; }
+  const state = map.get('health:steps') as MetricState;
+  assert.equal(state.status, 'reconnect');
+  assert.ok(state.nextRun! > Date.now());
+  assert.equal(refreshes, 2, 'one from the heart-rate poll, one from the health sync');
+});
+
+test('reconnecting keeps history and queues every metric to sync again', async () => {
+  const { account, storage, map } = fixture({ HEALTH_METRICS: 'steps' });
+  await storage.put('pending', { state: 's', verifier: 'v', browser: 'b', expires: Date.now() + 60000, origin: 'https://pulse.example' });
+  await storage.put('health:steps', { days: { '2026-10-27': 9000 }, syncedAt: now, status: 'reconnect', nextRun: now + HOUR });
+  const original = globalThis.fetch;
+  globalThis.fetch = async url => String(url).includes('oauth2') ? Response.json({ access_token: 'a', refresh_token: 'r', expires_in: 3600 }) : Response.json({});
+  try { await account.fetch(request('/callback?state=s&code=c', { headers: { Cookie: 'pulse_auth=b' } })); } finally { globalThis.fetch = original; }
+  assert.deepEqual(map.get('health:steps'), { days: { '2026-10-27': 9000 } });
+});
+
+test('connecting asks only for the scopes the metrics need; disconnect always clears them', async () => {
+  for (const [extra, expected] of [[{}, 1], [{ HEALTH_METRICS: 'restingHeartRate' }, 1], [{ HEALTH_METRICS: 'steps' }, 2], [{ HEALTH_METRICS: 'vo2Max,sleep' }, 3]] as const) {
     const { account, storage, map } = fixture(extra);
     await storage.put('session', { hash: await digest('session'), expires: Date.now() + 60000 });
     const headers = { Origin: 'https://pulse.example', Cookie: 'pulse_session=session' };
