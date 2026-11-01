@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { METRICS, HOUR, configuredMetrics, dueMetric, mergeDays, publicHealth, syncMetric, type Google, type MetricState } from '../cloudflare/health.ts';
-import { seal, digest } from '../cloudflare/security.ts';
+import { seal, unseal, digest, type Sealed } from '../cloudflare/security.ts';
 import worker, { PulseAccount } from '../cloudflare/worker.ts';
 type WorkerEnv = Parameters<typeof worker.fetch>[1];
 type HealthBody = ReturnType<typeof publicHealth>;
@@ -55,6 +55,11 @@ test('merging keeps the latest weigh-in, overwrites stale days and trims past a 
   assert.deepEqual(days, { '2026-10-26': 9000, '2026-10-20': 72.4 });
 });
 
+test('merging drops re-read days Google no longer has and ignores points before the window', () => {
+  const stored = { '2026-09-30': 1, '2026-10-01': 2, '2026-10-02': 3 };
+  assert.deepEqual(mergeDays(stored, [['2026-09-29', 9, 0]], '2026-10-01', now), { '2026-09-30': 1, '2026-10-01': 2 });
+});
+
 test('one metric is due at a time: never-synced first, then hourly, errors after backoff', () => {
   const keys = ['steps', 'sleep'];
   assert.equal(dueMetric(keys, {}, now), 'steps');
@@ -65,7 +70,7 @@ test('one metric is due at a time: never-synced first, then hourly, errors after
 });
 
 test('first sync backfills a year in 90-day rollups, later syncs re-read three days', async () => {
-  const bodies: { range: { start: { date: unknown } } }[] = [];
+  const bodies: { range: { start: { date: unknown }; end: { date: unknown } } }[] = [];
   const google: Google = async <T,>(_url: string | URL, options?: RequestInit) => {
     bodies.push(JSON.parse(String(options?.body)));
     return { rollupDataPoints: [{ civilStartTime: { date: date('2026-10-27') }, steps: { countSum: '8000' } }] } as T;
@@ -73,6 +78,7 @@ test('first sync backfills a year in 90-day rollups, later syncs re-read three d
   const first = await syncMetric('steps', undefined, google, now);
   assert.equal(bodies.length, 5);
   assert.deepEqual(bodies[0].range.start.date, date('2025-10-28'));
+  assert.deepEqual(bodies[4].range.end.date, date('2026-10-30'));
   assert.deepEqual(first, { days: { '2026-10-27': 8000 }, syncedAt: now, status: 'ok', failures: 0 });
   bodies.length = 0;
   await syncMetric('steps', first, google, now + HOUR);
@@ -84,6 +90,15 @@ test('a long gap re-reads from the newest stored day', async () => {
   const urls: URL[] = [];
   await syncMetric('weight', { days: { '2026-10-10': 70 }, syncedAt: now - HOUR }, async <T,>(url: string | URL) => { urls.push(new URL(url)); return {} as T; }, now);
   assert.equal(urls[0].searchParams.get('filter'), 'weight.sample_time.physical_time >= "2026-10-07T00:00:00Z"');
+  urls.length = 0;
+  await syncMetric('weight', { days: { '2026-11-05': 70 }, syncedAt: now - HOUR }, async <T,>(url: string | URL) => { urls.push(new URL(url)); return {} as T; }, now);
+  assert.equal(urls[0].searchParams.get('filter'), 'weight.sample_time.physical_time >= "2026-10-25T00:00:00Z"');
+});
+
+test('paging stops at the cap', async () => {
+  let calls = 0;
+  await syncMetric('hrv', undefined, async <T,>() => { calls++; return { dataPoints: [], nextPageToken: 'more' } as T; }, now);
+  assert.equal(calls, 20);
 });
 
 test('the last source wins for a daily metric', () => {
@@ -148,7 +163,6 @@ test('health.json publishes sorted days, statuses and public caching headers', a
   assert.equal(res.headers.get('Cache-Control'), 'public, max-age=300');
   const body = await res.json<HealthBody>();
   assert.deepEqual(body, { updatedAt: now, metrics: { steps: { unit: 'steps', days: [['2026-10-26', 5000], ['2026-10-27', 9000]] } }, status: { steps: 'ok', sleep: 'pending' } });
-  assert.ok(!JSON.stringify(body).includes('private'));
 });
 
 test('a failing health sync leaves the heart-rate reading healthy', async () => {
@@ -179,6 +193,35 @@ test('an expired Google login is reported on the metric and backs off', async ()
   assert.equal(state.status, 'reconnect');
   assert.ok(state.nextRun! > Date.now());
   assert.equal(refreshes, 2, 'one from the heart-rate poll, one from the health sync');
+});
+
+test('a TOKEN_KEY that no longer opens the login asks for a reconnect', async () => {
+  const { account, storage, map } = fixture({ HEALTH_METRICS: 'steps' });
+  await storage.put('account', { tokens: await seal({ refresh_token: 'refresh' }, 'c'.repeat(43)) });
+  await account.syncHealth();
+  assert.equal((map.get('health:steps') as MetricState).status, 'reconnect');
+});
+
+test('a refreshed Google login is saved during a health sync', async () => {
+  const { account, storage, map } = fixture({ HEALTH_METRICS: 'steps' });
+  await storage.put('account', { tokens: await seal({ refresh_token: 'refresh', access_token: 'old', expiresAt: 0 }, baseEnv.TOKEN_KEY) });
+  const original = globalThis.fetch;
+  globalThis.fetch = async url => String(url).includes('oauth2') ? Response.json({ access_token: 'new', expires_in: 3600 }) : Response.json({});
+  try { await account.syncHealth(); } finally { globalThis.fetch = original; }
+  const { tokens } = map.get('account') as { tokens: Sealed };
+  assert.equal((await unseal<{ access_token: string }>(tokens, baseEnv.TOKEN_KEY)).access_token, 'new');
+});
+
+test('with no account connected nothing is published or synced', async () => {
+  const { account, storage } = fixture({ HEALTH_METRICS: 'steps' });
+  await storage.put('health:steps', { days: { '2026-10-27': 9000 }, syncedAt: 1, status: 'ok' });
+  const body = await (await account.fetch(request('/health.json?feed=my-pulse'))).json<HealthBody>();
+  assert.deepEqual(body.metrics, {});
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return Response.json({}); };
+  try { await account.syncHealth(); } finally { globalThis.fetch = original; }
+  assert.equal(calls, 0);
 });
 
 test('reconnecting keeps history and queues every metric to sync again', async () => {

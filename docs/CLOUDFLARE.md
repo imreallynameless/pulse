@@ -31,7 +31,7 @@ npx wrangler secret put TOKEN_KEY
 7. Open the Worker URL, enter your owner key, and click **connect Google Health**. Complete Google's consent for the read-only health metrics scope. The page states that connecting publishes the latest BPM and measurement timestamp.
 8. Open the widget preview, verify a real reading and its age, then embed it.
 
-The requested scope is `https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly`. API eligibility and verification requirements are controlled by Google. Do not assume a shared public signup service is approved because a personal test account works.
+The default requested scope is `https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly`; the optional health page adds more. API eligibility and verification requirements are controlled by Google. Do not assume a shared public signup service is approved because a personal test account works.
 
 ## Embed
 
@@ -80,7 +80,7 @@ Dates are the owner's local dates from Google. Sleep counts toward the morning y
 ## Operation and privacy
 
 - A single Durable Object stores encrypted Google authorization and one latest reading, not a heart-rate history. With the health page on, it also keeps up to 365 daily values per enabled metric. Cloudflare secrets hold the encryption key and client credentials. Cloudflare remains a trusted hosting provider with access to the running service.
-- Public responses include only status, BPM, original measurement time, and server time. Anyone who knows the feed URL can read or copy those fields. Feed names are not passwords.
+- Public responses include only status, BPM, original measurement time, and server time, plus, with the health page on, the enabled daily values at `/health.json`. Anyone who knows the feed URL can read or copy those fields. Feed names are not passwords.
 - Owner sessions expire after 24 hours. This does not stop background sharing. Enter the owner key again to manage it.
 - **Stop sharing & disconnect** removes stored tokens, the reading, daily health values, and pending sign-in. It does not revoke the app in Google's account settings; you can remove Google access there separately. It cannot retract readings already seen by others.
 - Google apps in **Testing** generally have seven-day refresh-token expiry for this scope. Reconnect when authorization expires. Production publishing/verification is a separate Google process, not something this deployment bypasses.

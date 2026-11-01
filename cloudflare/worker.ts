@@ -201,9 +201,10 @@ export class PulseAccount {
     let tokens: Tokens | undefined;
     const google=async <T,>(url: string | URL, options: RequestInit={})=>{
       if(!tokens) {
-        // Inside the call, so a failed refresh lands in the metric's state. Google answers 400 once a login has expired.
+        // Inside the call, so a failed refresh lands in the metric's state. Google answers 400 once a login
+        // has expired, and tokens sealed with a replaced TOKEN_KEY fail to decrypt; reconnecting fixes both.
         try { tokens=await this.accessTokens(account); await this.storage.put('account',account); }
-        catch(error) { throw (error as {status?:number}).status===400 ? Object.assign(new Error('Reconnect Google'),{status:403}) : error; }
+        catch(error) { const {status,name}=error as {status?:number; name?:string}; throw status===400||name==='OperationError' ? Object.assign(new Error('Reconnect Google'),{status:403}) : error; }
       }
       return this.google<T>(url,{...options,headers:{...options.headers,Authorization:`Bearer ${tokens.access_token}`}});
     };

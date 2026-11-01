@@ -123,7 +123,9 @@ async function fetchPoints(metric: Metric, since: string, today: string, google:
 }
 
 export function mergeDays(stored: Record<string, HealthValue>, parsed: Parsed[], since: string, now: number) {
-  const days = { ...stored }, order: Record<string, number> = {}, cutoff = isoDate(now - KEEP_DAYS * DAY);
+  const order: Record<string, number> = {}, cutoff = isoDate(now - (KEEP_DAYS - 1) * DAY);
+  // Days after `since` were fully re-read, so one Google no longer has is gone. `since` itself may be cut short.
+  const days = Object.fromEntries(Object.entries(stored).filter(([day]) => day <= since));
   for (const entry of parsed) {
     if (!entry) continue;
     const [day, value, rank] = entry;
