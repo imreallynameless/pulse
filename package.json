@@ -2,7 +2,7 @@
   "name": "pulse-fitbit",
   "version": "0.1.0",
   "private": true,
-  "description": "An embeddable latest-heart-rate widget powered by Google Health.",
+  "description": "An embeddable latest-heart-rate widget, with optional daily health stats, powered by Google Health.",
   "license": "MIT",
   "type": "module",
   "engines": {
