@@ -127,8 +127,8 @@ async function fetchPoints(metric: Metric, since: string, today: string, google:
 export function mergeDays(stored: Record<string, HealthValue>, parsed: Parsed[], since: string, now: number) {
   const order: Record<string, number> = {}, cutoff = oldestKept(now);
   // Days after `since` were fully re-read, so one Google no longer has is gone. `since` itself may be cut short.
-  // shortcut: an empty read deletes nothing, or an outage would erase history; a window's only record stays if deleted at Google.
-  const days = parsed.some(Boolean) ? Object.fromEntries(Object.entries(stored).filter(([day]) => day <= since)) : { ...stored };
+  // shortcut: a read with nothing in the window deletes nothing, or an outage would erase history; a window's only record stays if deleted at Google.
+  const days = parsed.some(entry => entry && entry[0] >= since) ? Object.fromEntries(Object.entries(stored).filter(([day]) => day <= since)) : { ...stored };
   for (const entry of parsed) {
     if (!entry) continue;
     const [day, value, rank] = entry;

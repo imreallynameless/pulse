@@ -124,8 +124,8 @@ export class PulseAccount {
       if(!tokens.refresh_token) return response('Google did not grant background access. Please reconnect.',400);
       const {healthUserId}=await this.google<{healthUserId?:string}>('https://health.googleapis.com/v4/users/me/identity',{headers:{Authorization:`Bearer ${tokens.access_token}`}});
       const owner=healthUserId?await digest(healthUserId):undefined, previous=(await this.storage.get<Account>('account'))?.owner;
-      // One person's history must not stay public under another Google account.
-      if(owner && previous && owner!==previous) await this.clearHealth();
+      // One person's history must not stay public under another Google account. Unsure counts as different; the next sync refills it.
+      if(!owner || owner!==previous) await this.clearHealth();
       await this.storage.put('account',{tokens:await seal(tokens,this.env.TOKEN_KEY),latest:null,checkedAt:null,error:false,owner:owner||previous});
       // New grants can add scopes, so every metric syncs again. Charts keep their history meanwhile.
       for(const key of Object.keys(METRICS)) { const state=await this.storage.get<MetricState>(`health:${key}`); if(state) await this.storage.put(`health:${key}`,{...state,nextRun:0}); }
