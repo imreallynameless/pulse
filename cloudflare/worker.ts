@@ -1,7 +1,7 @@
 import type { Reading, Tokens, TokenResponse, HeartRatePage } from '../types.ts';
 import type { Sealed } from './security.ts';
 interface Env { ADMIN_KEY: string; TOKEN_KEY: string; GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_SECRET: string; FEED: string; HEALTH_METRICS?: string; ASSETS: Fetcher; ACCOUNT: DurableObjectNamespace }
-interface Account { tokens: Sealed; latest?: Reading | null; checkedAt?: number | null; error?: boolean; failures?: number; nextCheck?: number; scan?: {since:number; until:number; pageToken:string} | null }
+interface Account { tokens: Sealed; latest?: Reading | null; checkedAt?: number | null; error?: boolean; failures?: number; nextCheck?: number; scan?: {since:number; until:number; pageToken:string} | null; owner?: string }
 interface Pending { state:string; verifier:string; browser:string; expires:number; origin:string }
 interface Session { hash:string; expires:number }
 import { random, digest, seal, unseal } from './security.ts';
@@ -122,10 +122,13 @@ export class PulseAccount {
       if(!url.searchParams.get('code')) return response('Permission was not granted. Return to Pulse to retry.',400);
       const tokens=await this.tokenRequest({grant_type:'authorization_code',code:url.searchParams.get('code')!,code_verifier:pending.verifier,redirect_uri:pending.origin+'/callback'});
       if(!tokens.refresh_token) return response('Google did not grant background access. Please reconnect.',400);
-      await this.google('https://health.googleapis.com/v4/users/me/identity',{headers:{Authorization:`Bearer ${tokens.access_token}`}});
-      await this.storage.put('account',{tokens:await seal(tokens,this.env.TOKEN_KEY),latest:null,checkedAt:null,error:false});
+      const {healthUserId}=await this.google<{healthUserId?:string}>('https://health.googleapis.com/v4/users/me/identity',{headers:{Authorization:`Bearer ${tokens.access_token}`}});
+      const owner=healthUserId?await digest(healthUserId):undefined, previous=(await this.storage.get<Account>('account'))?.owner;
+      // One person's history must not stay public under another Google account.
+      if(owner && previous && owner!==previous) await this.clearHealth();
+      await this.storage.put('account',{tokens:await seal(tokens,this.env.TOKEN_KEY),latest:null,checkedAt:null,error:false,owner:owner||previous});
       // New grants can add scopes, so every metric syncs again. Charts keep their history meanwhile.
-      for(const key of Object.keys(METRICS)) { const state=await this.storage.get<MetricState>(`health:${key}`); if(state) await this.storage.put(`health:${key}`,{days:state.days}); }
+      for(const key of Object.keys(METRICS)) { const state=await this.storage.get<MetricState>(`health:${key}`); if(state) await this.storage.put(`health:${key}`,{...state,nextRun:0}); }
       await this.poll();
       return redirect('/',{'Set-Cookie':cookie('pulse_auth','',0,'Lax')});
     }

@@ -60,6 +60,28 @@ test('merging drops re-read days Google no longer has and ignores points before 
   assert.deepEqual(mergeDays(stored, [['2026-09-29', 9, 0]], '2026-10-01', now), { '2026-09-30': 1, '2026-10-01': 2 });
 });
 
+test('an empty read deletes nothing, however often it repeats', async () => {
+  const days = { '2026-10-20': 1, '2026-10-26': 2, '2026-10-27': 3 };
+  assert.deepEqual(mergeDays(days, [], '2026-10-24', now), days);
+  assert.deepEqual(mergeDays(days, [null], '2026-10-24', now), days);
+  let state: MetricState = { days };
+  for (let run = 0; run < 5; run++) state = await syncMetric('sleep', state, (async () => ({})) as Google, now);
+  assert.deepEqual(state.days, days);
+});
+
+test('a metric stuck failing still drops days past the year', async () => {
+  const failing = (status: number) => (async () => { throw Object.assign(new Error('no'), { status }); }) as Google;
+  for (const status of [403, 500]) {
+    const state = await syncMetric('steps', { days: { '2025-01-01': 1, '2026-10-26': 2 } }, failing(status), now);
+    assert.deepEqual(state.days, { '2026-10-26': 2 });
+  }
+});
+
+test('a night reported as zero minutes asleep falls back to its stages', () => {
+  const sleep = { interval: { endTime: '2026-10-27T14:00:00Z', endUtcOffset: '-25200s' }, summary: { minutesAsleep: '0', stagesSummary: [{ type: 'DEEP', minutes: 60 }, { type: 'LIGHT', minutes: 300 }] } };
+  assert.deepEqual(METRICS.sleep.parse({ sleep })?.[1], { asleep: 360, deep: 60, light: 300 });
+});
+
 test('one metric is due at a time: never-synced first, then hourly, errors after backoff', () => {
   const keys = ['steps', 'sleep'];
   assert.equal(dueMetric(keys, {}, now), 'steps');
@@ -224,6 +246,27 @@ test('with no account connected nothing is published or synced', async () => {
   assert.equal(calls, 0);
 });
 
+async function reconnect(healthUserId: string | undefined, setup: (storage: DurableObjectStorage) => Promise<void>) {
+  const { account, storage, map } = fixture({ HEALTH_METRICS: 'steps' });
+  await storage.put('pending', { state: 's', verifier: 'v', browser: 'b', expires: Date.now() + 60000, origin: 'https://pulse.example' });
+  await storage.put('health:steps', { days: { '2026-10-27': 9000 }, syncedAt: now, status: 'reconnect', nextRun: now + HOUR });
+  await setup(storage as unknown as DurableObjectStorage);
+  const original = globalThis.fetch;
+  globalThis.fetch = async url => String(url).includes('oauth2') ? Response.json({ access_token: 'a', refresh_token: 'r', expires_in: 3600 }) : Response.json(String(url).includes('identity') ? { healthUserId } : {});
+  try { await account.fetch(request('/callback?state=s&code=c', { headers: { Cookie: 'pulse_auth=b' } })); } finally { globalThis.fetch = original; }
+  return map;
+}
+
+test('a different Google account starts empty; the same one keeps its history', async () => {
+  const signedInAs = (id: string) => async (storage: DurableObjectStorage) => { await storage.put('account', { tokens: await seal({ refresh_token: 'old' }, baseEnv.TOKEN_KEY), owner: await digest(id) }); };
+  assert.equal((await reconnect('b', signedInAs('a'))).has('health:steps'), false);
+  assert.equal((await reconnect('a', signedInAs('a'))).has('health:steps'), true);
+  // Connected before owners were recorded: nothing to compare yet, so the next reconnect can tell.
+  const legacy = await reconnect('a', async () => {});
+  assert.equal(legacy.has('health:steps'), true);
+  assert.equal((legacy.get('account') as { owner: string }).owner, await digest('a'));
+});
+
 test('reconnecting keeps history and queues every metric to sync again', async () => {
   const { account, storage, map } = fixture({ HEALTH_METRICS: 'steps' });
   await storage.put('pending', { state: 's', verifier: 'v', browser: 'b', expires: Date.now() + 60000, origin: 'https://pulse.example' });
@@ -231,7 +274,9 @@ test('reconnecting keeps history and queues every metric to sync again', async (
   const original = globalThis.fetch;
   globalThis.fetch = async url => String(url).includes('oauth2') ? Response.json({ access_token: 'a', refresh_token: 'r', expires_in: 3600 }) : Response.json({});
   try { await account.fetch(request('/callback?state=s&code=c', { headers: { Cookie: 'pulse_auth=b' } })); } finally { globalThis.fetch = original; }
-  assert.deepEqual(map.get('health:steps'), { days: { '2026-10-27': 9000 } });
+  const state = map.get('health:steps') as MetricState;
+  assert.deepEqual(state, { days: { '2026-10-27': 9000 }, syncedAt: now, status: 'reconnect', nextRun: 0 });
+  assert.equal(dueMetric(['steps'], { steps: state }, now), 'steps');
 });
 
 test('connecting asks only for the scopes the metrics need; disconnect always clears them', async () => {

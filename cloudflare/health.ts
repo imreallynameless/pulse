@@ -21,6 +21,8 @@ const API = 'https://health.googleapis.com/v4/users/me/dataTypes/';
 const ACTIVITY = 'activity_and_fitness', MEASUREMENTS = 'health_metrics_and_measurements';
 
 const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const oldestKept = (now: number) => isoDate(now - (KEEP_DAYS - 1) * DAY);
+const recent = (days: Record<string, HealthValue>, now: number) => Object.fromEntries(Object.entries(days).filter(([day]) => day >= oldestKept(now)));
 export function civilDate(date: GoogleDate | undefined) {
   if (!date?.year || !date.month || !date.day) return null;
   return `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
@@ -75,7 +77,7 @@ export const METRICS: Record<string, Metric> = {
       const minutes = finite(stage.minutes, 0, 1440);
       if (minutes !== null) totals[String(stage.type || '').toLowerCase()] = minutes;
     }
-    const asleep = finite(sleep.summary?.minutesAsleep ?? Object.entries(totals).reduce((sum, [name, minutes]) => name === 'awake' || name === 'restless' ? sum : sum + minutes, 0), 1, MAX_SLEEP_MINUTES);
+    const asleep = finite(Number(sleep.summary?.minutesAsleep) || Object.entries(totals).reduce((sum, [name, minutes]) => name === 'awake' || name === 'restless' ? sum : sum + minutes, 0), 1, MAX_SLEEP_MINUTES);
     if (asleep === null) return null;
     const night: SleepNight = { asleep: Math.round(asleep) };
     for (const name of ['deep', 'light', 'rem', 'awake'] as const) if (name in totals) night[name] = Math.round(totals[name]);
@@ -123,9 +125,10 @@ async function fetchPoints(metric: Metric, since: string, today: string, google:
 }
 
 export function mergeDays(stored: Record<string, HealthValue>, parsed: Parsed[], since: string, now: number) {
-  const order: Record<string, number> = {}, cutoff = isoDate(now - (KEEP_DAYS - 1) * DAY);
+  const order: Record<string, number> = {}, cutoff = oldestKept(now);
   // Days after `since` were fully re-read, so one Google no longer has is gone. `since` itself may be cut short.
-  const days = Object.fromEntries(Object.entries(stored).filter(([day]) => day <= since));
+  // shortcut: an empty read deletes nothing, or an outage would erase history; a window's only record stays if deleted at Google.
+  const days = parsed.some(Boolean) ? Object.fromEntries(Object.entries(stored).filter(([day]) => day <= since)) : { ...stored };
   for (const entry of parsed) {
     if (!entry) continue;
     const [day, value, rank] = entry;
@@ -133,24 +136,24 @@ export function mergeDays(stored: Record<string, HealthValue>, parsed: Parsed[],
     if (day in order && order[day] > rank) continue;
     order[day] = rank; days[day] = value;
   }
-  for (const day of Object.keys(days)) if (day < cutoff) delete days[day];
-  return days;
+  return recent(days, now);
 }
 
 export async function syncMetric(key: string, state: MetricState | undefined, google: Google, now: number): Promise<MetricState> {
   const metric = METRICS[key], today = isoDate(now);
   // Backfill a year until something is stored, then re-read three days before the
   // newest stored day, so days synced late or after a long gap still land.
-  const newest = Object.keys(state?.days || {}).sort().at(-1);
+  // Trimmed up front so a metric stuck failing still drops days past the year.
+  const days = recent(state?.days || {}, now), newest = Object.keys(days).sort().at(-1);
   const since = isoDate(newest ? Math.min(now, Date.parse(newest)) - 3 * DAY : now - KEEP_DAYS * DAY);
   try {
     const parsed = (await fetchPoints(metric, since, today, google)).map(point => metric.parse(point));
-    return { days: mergeDays(state?.days || {}, parsed, since, now), syncedAt: now, status: 'ok', failures: 0 };
+    return { days: mergeDays(days, parsed, since, now), syncedAt: now, status: 'ok', failures: 0 };
   } catch (error) {
     // A 403 means this connection predates the scope; reconnecting fixes it.
-    if ((error as { status?: number }).status === 403) return { ...state, days: state?.days || {}, status: 'reconnect', nextRun: now + HOUR };
+    if ((error as { status?: number }).status === 403) return { ...state, days, status: 'reconnect', nextRun: now + HOUR };
     const failures = Math.min((state?.failures || 0) + 1, 8);
-    return { ...state, days: state?.days || {}, status: 'error', failures, nextRun: now + Math.min(HOUR, 60000 * 2 ** (failures - 1)) };
+    return { ...state, days, status: 'error', failures, nextRun: now + Math.min(HOUR, 60000 * 2 ** (failures - 1)) };
   }
 }
 
