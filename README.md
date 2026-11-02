@@ -43,6 +43,20 @@ once yours is running, swap in your host + feed and drop this wherever you want 
 
 if your site has a theme toggle, send the iframe a message so it changes colour without reloading: `iframe.contentWindow.postMessage({ type: 'pulse:theme', theme: 'dark' }, 'https://YOUR-PULSE-HOST')`. send it again when the iframe loads, in case the toggle changed while it was loading. give it a bit more room on narrow layouts or with bigger text. old links with `source=cloud` still work.
 
+## health page (optional)
+
+pulse can also share daily stats for a whole health page: steps, sleep, resting heart rate, hrv, blood oxygen, breathing rate, skin temp, vo2 max, active zone minutes and weight. it's off unless you turn it on. [setup + what it shares](docs/CLOUDFLARE.md#optional-health-page). mine's at [laywu.com/health](https://laywu.com/health).
+
+no drop-in widget for this one (yet), so your site grabs the json and draws it however you like:
+
+```js
+const res = await fetch('https://YOUR-PULSE-HOST/health.json?feed=my-pulse')
+const { metrics, status } = await res.json()
+// metrics.steps.days → [["2026-10-27", 8123], ...], oldest first
+```
+
+or tell ur agent to build you a health page from your `/health.json`, and point it at the [feed format](docs/CLOUDFLARE.md#optional-health-page).
+
 ## how fresh is it?
 
 your device → google health → pulse → your website.
@@ -57,7 +71,7 @@ I've tested this with my fitbit. apple watch data through google health still ne
 
 you use your own accounts and keys. you're hosting your own copy, not signing up for mine.
 
-- **public:** your latest bpm, when it was measured, update status, and server time. anyone with the feed link can read those. connecting starts sharing.
+- **public:** your latest bpm, when it was measured, update status, and server time. if you turn on the health page, the daily stats you picked too. anyone with the feed link can read those. connecting starts sharing.
 - **private:** google tokens stay encrypted on the server. credentials + encryption keys live in cloudflare secrets. your owner key unlocks the controls; keep it out of git and your embed code.
 - **done sharing?** disconnect on your owner page to clear the saved connection and reading. that doesn't revoke access in your google account or erase anything someone already saved.
 

@@ -10,6 +10,8 @@ For the supported Cloudflare deployment, copy this prompt into your agent with y
 
 > Set up this Pulse fork for my own Google Health account on Cloudflare. Read docs/CLOUDFLARE.md and follow its deployment steps. Ask me for the Worker name, public feed slug, and operator/contact details needed for the public pages. Use my own Google Cloud and Cloudflare accounts; never reuse the original author's deployment or credentials. Let me complete account sign-ins and Google consent. Configure the exact hosted /callback redirect and read-only Health scope. Generate separate random owner and encryption keys of at least 32 bytes and store credentials securely using Cloudflare secrets; never print secrets in chat, commit them, or put them in embed URLs. Explain that connecting publishes my latest BPM and measurement time. Run tests and a deployment dry run, deploy, and verify the widget and unknown-feed 404. Give me the owner URL, public iframe snippet, and instructions to stop sharing. Do not claim a live connection or verified Apple Watch support. If Google denies API access, explain the blocker rather than substituting someone else's account.
 
+Want the health page too? Add this to the prompt: “Also turn on the optional health page from docs/CLOUDFLARE.md with the metrics I choose, then help me add a page to my website that reads /health.json.”
+
 ## Agent setup for other backends
 
 AWS, Vercel, GCP, Azure and other servers are **porting targets**, not working deployment adapters in this repository. These prompts ask an agent to implement and verify the missing backend. Use Cloudflare above if you want the existing implementation.
