@@ -45,7 +45,17 @@ if your site has a theme toggle, send the iframe a message so it changes colour 
 
 ## health page (optional)
 
-pulse can also share daily stats for a whole health page: steps, sleep, resting heart rate, hrv, blood oxygen, breathing rate, skin temp, vo2 max, active zone minutes and weight. it's off unless you turn it on, then your site fetches `/health.json`. [setup + what it shares](docs/CLOUDFLARE.md#optional-health-page). mine's at [laywu.com/health](https://laywu.com/health).
+pulse can also share daily stats for a whole health page: steps, sleep, resting heart rate, hrv, blood oxygen, breathing rate, skin temp, vo2 max, active zone minutes and weight. it's off unless you turn it on. [setup + what it shares](docs/CLOUDFLARE.md#optional-health-page). mine's at [laywu.com/health](https://laywu.com/health).
+
+no drop-in widget for this one (yet), so your site grabs the json and draws it however you like:
+
+```js
+const res = await fetch('https://YOUR-PULSE-HOST/health.json?feed=my-pulse')
+const { metrics, status } = await res.json()
+// metrics.steps.days → [["2026-10-27", 8123], ...], oldest first
+```
+
+or tell ur agent to build you a health page from your `/health.json`, and point it at the [feed format](docs/CLOUDFLARE.md#optional-health-page).
 
 ## how fresh is it?
 
